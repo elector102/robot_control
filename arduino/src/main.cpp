@@ -9,33 +9,51 @@
 using namespace arduino_due::pwm_lib;
 
 void funcion_t1();
-//señal de control de velocidad
-#define vr_pin 8
-// sentido de giro del motor
-#define z_f_pin 9
-// pulsos de velocidad de salida
-#define signal_pin 10
-// enable control
-#define el_pin 11
+
 //#define PWM_PERIODO_US 100000 //1khz
 #define PWM_PERIODO_US 10000 //10khz
-// defining pwm object using pin 35, pin PC3 mapped to pin 35 on the DUE
+
+
+// definiciones motor D(Delantero)
+// defining pwm object using pin 6, pin PC24 mapped to pin 6 on the DUE
 // this object uses PWM channel 0
-pwm<pwm_pin::PWML7_PC24> pwm_pin6;
-
-int salida_pwm =0;
-int entrada_analogica =0;
-
 #define CAPTURE_TIME_WINDOW 40000000 // usecs
+pwm<pwm_pin::PWML7_PC24> pwm_motor_D;
 
-capture_tc1_declaration(); // TC0 and channel 1
-auto& capture_pinA7=capture_tc1;
+int salida_pwm_motor_D = 0;
+int entrada_analogica_motor_D = 0;
 
-uint32_t status,duty,period,pulses;
+capture_tc1_declaration(); // TC0 and channel 1 pin A7
+auto& capture_motor_D = capture_tc1;
 
+uint32_t status_motor_D, duty_motor_D, period_motor_D, pulses_motor_D;
 
+// sentido de giro del motor
+#define z_f_pin_motor_D 9
+// pulsos de velocidad de salida
+#define signal_pin_motor_D 10
+// enable control
+#define el_pin_motor_D 11
 
+// definiciones motor T(Tracero)
+// defining pwm object using pin 7, pin PC23 mapped to pin 7 on the DUE
+// this object uses PWM channel 0
+pwm<pwm_pin::PWML6_PC23> pwm_motor_T;
 
+int salida_pwm_motor_T = 0;
+int entrada_analogica_motor_T = 0;
+
+capture_tc6_declaration(); // TC0 and channel 1 pin pin digital 5
+auto& capture_motor_T = capture_tc6;
+
+uint32_t status_motor_T, duty_motor_T, period_motor_T, pulses_motor_T;
+
+// sentido de giro del motor
+#define z_f_pin_motor_T 9
+// pulsos de velocidad de salida
+#define signal_pin_motor_T 10
+// enable control
+#define el_pin_motor_T 11
 
 byte cantidad_sensores;
 byte cantidad_actuadores;
@@ -48,14 +66,14 @@ float actuador[20]; //buffer final de datos de actuadores. Datos en formato 15 b
 float sensor[20]; //buffer final de escritura
 float Ksensor = 1.0; //mapeo
 float Kactuador = 1.0; //mapeo
-byte IDslave=1;
+byte IDslave = 1;
 int contador = 0;
 int encabezado = 0, i = 0, j = 0, k = 0;
 
 bool evento_tx = 0, evento_control = 0, evento_rx = 0, evento_tarea_1 = 0; //banderas de eventos-tareas
 
 byte modo = 0;//modo-funcion
-byte estado_debug=0;
+byte estado_debug = 0;
 
 
 
@@ -118,18 +136,25 @@ void serialEvent() {
 //*************************************************************************************
 void setup() {
   // initialization of capture objects
-  capture_pinA7.config(CAPTURE_TIME_WINDOW);
+  capture_motor_D.config(CAPTURE_TIME_WINDOW);
+  capture_motor_T.config(CAPTURE_TIME_WINDOW);
   // put your setup code here, to run once:
-  //seteado a 1Khz para probar
-  pwm_pin6.start(PWM_PERIODO_US,1000);
-  pinMode(vr_pin, OUTPUT);
-  pinMode(z_f_pin, OUTPUT);
-  pinMode(signal_pin, INPUT);
-  pinMode(el_pin, OUTPUT);
+  //seteado a 10Khz para probar
+  pwm_motor_D.start(PWM_PERIODO_US,1000);
+  pwm_motor_T.start(PWM_PERIODO_US,1000);
+
+  pinMode(z_f_pin_motor_D, OUTPUT);
+  pinMode(signal_pin_motor_D, INPUT);
+  pinMode(el_pin_motor_D, OUTPUT);
+
+  pinMode(z_f_pin_motor_T, OUTPUT);
+  pinMode(signal_pin_motor_T, INPUT);
+  pinMode(el_pin_motor_T, OUTPUT);
 
   pinMode(42, OUTPUT);
   digitalWrite(42, LOW);
-  pwm_pin6.set_duty(0);
+  pwm_motor_D.set_duty(0);
+  pwm_motor_T.set_duty(0);
 
   
   Serial.begin(256000);
@@ -144,18 +169,18 @@ void setup() {
 //***************************** XXX  MAIN  XXX  ***************************************
 //*************************************************************************************
 void loop() {
-  digitalWrite(42, LOW);
-  //digitalWrite(42, HIGH);
+
   if (evento_control == 1)       //CADA 1ms EJECUTA ESTE CODE - LAZO DE CONTROL
   {
     
     if (modo == 1) // MODO = 1 START
     {
-      //digitalWrite(42, HIGH);
       sensor[0] = actuador[0]; //ejemplo: espejo en dato[0]
 
-      salida_pwm = map(actuador[1], 0, 100, 0, PWM_PERIODO_US);
-      pwm_pin6.set_duty(salida_pwm);
+      salida_pwm_motor_D = map(actuador[1], 0, 100, 0, PWM_PERIODO_US);
+      pwm_motor_D.set_duty(salida_pwm_motor_D);
+      salida_pwm_motor_T = map(actuador[2], 0, 100, 0, PWM_PERIODO_US);
+      pwm_motor_T.set_duty(salida_pwm_motor_T);
     
     }
     if (modo == 0) { //STOP
@@ -170,10 +195,13 @@ void loop() {
     
  }
   if (evento_tarea_1 == 1) {      //TAREA CADA xxx ms
-      status = capture_pinA7.get_duty_period_and_pulses(duty,period,pulses);
-      sensor[1] = pulses;
-      capture_pinA7.config(CAPTURE_TIME_WINDOW);
-    evento_tarea_1 = 0;
+      status_motor_D = capture_motor_D.get_duty_period_and_pulses(duty_motor_D,period_motor_D,pulses_motor_D);
+      sensor[1] = pulses_motor_D;
+      capture_motor_D.config(CAPTURE_TIME_WINDOW);
+      status_motor_T = capture_motor_T.get_duty_period_and_pulses(duty_motor_T, period_motor_T, pulses_motor_T);
+      sensor[2] = pulses_motor_T;
+      capture_motor_T.config(CAPTURE_TIME_WINDOW);
+      evento_tarea_1 = 0;
   }
   //*************************************************************************************
   //*************** EVENTO DETECCION DE TRAMA   *************************************
@@ -242,7 +270,7 @@ void funcion_t1()
     evento_tarea_1 = 1; //tarea cada 100 ms
     contador = 0;
 
-    
+
   }
 }
 

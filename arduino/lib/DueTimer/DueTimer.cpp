@@ -303,10 +303,10 @@ void TC5_Handler(void){
 }
 #endif
 #if NUM_TIMERS > 6
-void TC6_Handler(void){
-	TC_GetStatus(TC2, 0);
-	DueTimer::callbacks[6]();
-}
+//void TC6_Handler(void){
+//	TC_GetStatus(TC2, 0);
+//	DueTimer::callbacks[6]();
+//}
 void TC7_Handler(void){
 	TC_GetStatus(TC2, 1);
 	DueTimer::callbacks[7]();

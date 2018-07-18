@@ -59,7 +59,7 @@ protected:
   friend void TC4_Handler(void);
   friend void TC5_Handler(void);
 #if NUM_TIMERS > 6
-  friend void TC6_Handler(void);
+  //friend void TC6_Handler(void);
   friend void TC7_Handler(void);
   friend void TC8_Handler(void);
 #endif
