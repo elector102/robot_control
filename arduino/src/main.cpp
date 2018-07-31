@@ -7,6 +7,19 @@ void funcion_t1();
 
 #define PWM_PERIODO_US 10000 //10khz
 
+// Diametro de la rueda en cm. cm = 2.54 * pulgadas
+#define diametro_cm 25.4 // 10 pulgadas
+#define pi 3.1415926535
+// cantidad de periodos que se tienen por vuelta del motor
+#define pulsos_por_vuelta 21
+// perimetro en cm de la rueda
+float perimetro_rueda = pi * diametro_cm;
+// distancia recorrida por cada periodo de señal del motor
+float distancia_periodo = perimetro_rueda / pulsos_por_vuelta;
+#define us_to_s 1/1000000
+#define cm_to_m 1/100
+#define metros_en_us distancia_periodo * cm_to_m / us_to_s
+
 
 // Definiciones motor D(Delantero)
 // Defining pwm object using pin 6, pin PC24 mapped to pin 6 on the DUE
@@ -20,7 +33,7 @@ int entrada_analogica_motor_D = 0;
 capture_tc8_declaration(); // TC0 and channel 1 pin A7
 auto& capture_motor_D = capture_tc8;
 
-uint32_t status_motor_D, duty_motor_D, period_motor_D, period_motor_D_ms, pulses_motor_D;
+uint32_t status_motor_D, duty_motor_D, period_motor_D, period_motor_D_us, pulses_motor_D;
 
 // Sentido de giro del motor
 #define z_f_pin_motor_D 9
@@ -40,7 +53,7 @@ int entrada_analogica_motor_T = 0;
 capture_tc6_declaration(); // TC0 and channel 1 pin pin digital 5
 auto& capture_motor_T = capture_tc6;
 
-uint32_t status_motor_T, duty_motor_T, period_motor_T, period_motor_T_ms, pulses_motor_T;
+uint32_t status_motor_T, duty_motor_T, period_motor_T, period_motor_T_us, pulses_motor_T;
 
 // Sentido de giro del motor
 #define z_f_pin_motor_T 7
@@ -190,14 +203,14 @@ void loop() {
   // Cada xxx ms ejecuta este codigo
   if (evento_tarea_1 == 1) {      
       status_motor_D = capture_motor_D.get_duty_period_and_pulses(duty_motor_D, period_motor_D, pulses_motor_D);
-      period_motor_D_ms = period_motor_D/(42);
-      sensor[1] = period_motor_D_ms;
+      period_motor_D_us = period_motor_D/(42);
+      sensor[1] = metros_en_us / period_motor_D_us;
       capture_motor_D.config(CAPTURE_TIME_WINDOW);
       status_motor_T = capture_motor_T.get_duty_period_and_pulses(duty_motor_T, period_motor_T, pulses_motor_T);
-      period_motor_T_ms = period_motor_T/(42);
-      sensor[2] = period_motor_T_ms;
+      period_motor_T_us = period_motor_T/(42);
+      sensor[2] = metros_en_us / period_motor_T_us;
       capture_motor_T.config(CAPTURE_TIME_WINDOW);
-      evento_tarea_1 = 0;
+      evento_tarea_1  = 0;
   }
   //*************************************************************************************
   //*************** EVENTO DETECCION DE TRAMA   *************************************
