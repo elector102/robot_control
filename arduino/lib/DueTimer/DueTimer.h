@@ -61,7 +61,7 @@ protected:
 #if NUM_TIMERS > 6
   //friend void TC6_Handler(void);
   friend void TC7_Handler(void);
-  friend void TC8_Handler(void);
+  //friend void TC8_Handler(void);
 #endif
 
 	static void (*callbacks[NUM_TIMERS])();

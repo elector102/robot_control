@@ -311,8 +311,8 @@ void TC7_Handler(void){
 	TC_GetStatus(TC2, 1);
 	DueTimer::callbacks[7]();
 }
-void TC8_Handler(void){
-	TC_GetStatus(TC2, 2);
-	DueTimer::callbacks[8]();
-}
+//void TC8_Handler(void){
+//	TC_GetStatus(TC2, 2);
+//	DueTimer::callbacks[8]();
+//}
 #endif
