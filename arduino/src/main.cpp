@@ -12,27 +12,27 @@ void funcion_t1();
 // Defining pwm object using pin 6, pin PC24 mapped to pin 6 on the DUE
 // This object uses PWM channel 0
 #define CAPTURE_TIME_WINDOW 40000000 // usecs
-arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML7_PC24> pwm_motor_D;
+arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML5_PC22> pwm_motor_D;
 
 int salida_pwm_motor_D = 0;
 int entrada_analogica_motor_D = 0;
 
-capture_tc1_declaration(); // TC0 and channel 1 pin A7
-auto& capture_motor_D = capture_tc1;
+capture_tc8_declaration(); // TC0 and channel 1 pin A7
+auto& capture_motor_D = capture_tc8;
 
-uint32_t status_motor_D, duty_motor_D, period_motor_D, pulses_motor_D;
+uint32_t status_motor_D, duty_motor_D, period_motor_D, period_motor_D_ms, pulses_motor_D;
 
 // Sentido de giro del motor
 #define z_f_pin_motor_D 9
 // Pulsos de velocidad de salida
-#define signal_pin_motor_D 10
+//#define signal_pin_motor_D 10
 // Enable control
-#define el_pin_motor_D 11
+#define el_pin_motor_D 12
 
 // Definiciones motor T(Tracero)
-// Defining pwm object using pin 7, pin PC23 mapped to pin 7 on the DUE
+// Defining pwm object using pin 6, pin PC24 mapped to pin 6 on the DUE
 // This object uses PWM channel 0
-arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML6_PC23> pwm_motor_T;
+arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML7_PC24> pwm_motor_T;
 
 int salida_pwm_motor_T = 0;
 int entrada_analogica_motor_T = 0;
@@ -40,14 +40,14 @@ int entrada_analogica_motor_T = 0;
 capture_tc6_declaration(); // TC0 and channel 1 pin pin digital 5
 auto& capture_motor_T = capture_tc6;
 
-uint32_t status_motor_T, duty_motor_T, period_motor_T, pulses_motor_T;
+uint32_t status_motor_T, duty_motor_T, period_motor_T, period_motor_T_ms, pulses_motor_T;
 
 // Sentido de giro del motor
-#define z_f_pin_motor_T 9
+#define z_f_pin_motor_T 7
 // Pulsos de velocidad de salida
-#define signal_pin_motor_T 10
+//#define signal_pin_motor_T 5
 // Enable control
-#define el_pin_motor_T 11
+#define el_pin_motor_T 4
 
 byte cantidad_sensores;
 byte cantidad_actuadores;
@@ -72,6 +72,8 @@ int encabezado = 0, i = 0, j = 0, k = 0;
 
 // Banderas de eventos-tareas
 bool evento_tx = 0, evento_control = 0, evento_rx = 0, evento_tarea_1 = 0;
+
+int pin_RST_RS485 = 10;
 // Modo-funcion
 byte modo = 0;
 byte estado_debug = 0;
@@ -79,9 +81,9 @@ byte estado_debug = 0;
 //*************************************************************************************
 //********** SERVICIO DE INTERRUPCION  ISR(SERIAL_RX)   *********************
 //*************************************************************************************
-void serialEvent() {
+void serialEvent3() {
   // Lee un byte
-  inData[i] = Serial.read();
+  inData[i] = Serial3.read();
   // Separacion de datos recibidos
   if (encabezado < 3) {
     // Detección de cabecera
@@ -135,20 +137,26 @@ void setup() {
   pwm_motor_T.start(PWM_PERIODO_US, 1000);
 
   pinMode(z_f_pin_motor_D, OUTPUT);
-  pinMode(signal_pin_motor_D, INPUT);
+  //pinMode(signal_pin_motor_D, INPUT);
   pinMode(el_pin_motor_D, OUTPUT);
 
   pinMode(z_f_pin_motor_T, OUTPUT);
-  pinMode(signal_pin_motor_T, INPUT);
+  //pinMode(signal_pin_motor_T, INPUT);
   pinMode(el_pin_motor_T, OUTPUT);
+
+  pinMode(pin_RST_RS485, OUTPUT);
+  // desactiva el modo transmision en el conversor RS485
+  digitalWrite(pin_RST_RS485, LOW);
 
   pwm_motor_D.set_duty(0);
   pwm_motor_T.set_duty(0);
 
-  Serial.begin(256000);
-  pinMode(7, OUTPUT);
+  //Serial1.begin(1312500);
+  Serial3.begin(256000);
+  //Serial3.begin(115200);
+  pinMode(30, OUTPUT);
   // Ventana de tiempo 1mS
-  Timer0.start(1000);
+  Timer0.start(10000);
   // Interrupcion timer 1
   Timer0.attachInterrupt(funcion_t1);
 }//----------------   FIM DO SETUP Y PARAMETROS -----------------------------
@@ -182,10 +190,12 @@ void loop() {
   // Cada xxx ms ejecuta este codigo
   if (evento_tarea_1 == 1) {      
       status_motor_D = capture_motor_D.get_duty_period_and_pulses(duty_motor_D, period_motor_D, pulses_motor_D);
-      sensor[1] = pulses_motor_D;
+      period_motor_D_ms = period_motor_D/(42);
+      sensor[1] = period_motor_D_ms;
       capture_motor_D.config(CAPTURE_TIME_WINDOW);
       status_motor_T = capture_motor_T.get_duty_period_and_pulses(duty_motor_T, period_motor_T, pulses_motor_T);
-      sensor[2] = pulses_motor_T;
+      period_motor_T_ms = period_motor_T/(42);
+      sensor[2] = period_motor_T_ms;
       capture_motor_T.config(CAPTURE_TIME_WINDOW);
       evento_tarea_1 = 0;
   }
@@ -217,23 +227,25 @@ void loop() {
   //*************** XXX  TRANSMIION DE DATOS  XXX  *************************************
   //*************************************************************************************
   if (evento_tx == 1) {
+    // Activa modo transmisor en el conversor RS485
+    digitalWrite(pin_RST_RS485, HIGH);
     if(estado_debug == 1) {
-      digitalWrite(7, HIGH);
+      digitalWrite(30, HIGH);
       estado_debug = 0;
     } else {
-      digitalWrite(7, LOW);
+      digitalWrite(30, LOW);
       estado_debug = 1;
     }
     // DEBUG
-    sensor[0] = sensor[0] + 1.0;
+    //sensor[0] = sensor[0] + 1.0;
     // Envia cabecera FF FF
-    Serial.write(0xFF);    
+    Serial3.write(0xFF);    
     // Envia cabecera FF FF
-    Serial.write(0xFF);    
+    Serial3.write(0xFF);    
     // Envia modo
-    Serial.write(IDslave);
+    Serial3.write(IDslave);
     // Envia modo   
-    Serial.write(modo);   
+    Serial3.write(modo);   
   
     for (k = 0; k < cantidad_sensores; k++) {
       if (sensor[k] < 0) {
@@ -242,12 +254,20 @@ void loop() {
       } else {
         envio[k] =  ((unsigned int)(sensor[k] * Ksensor)) & 0x7FFF;
       }
-      Serial.write(highByte(envio[k]));
-      Serial.write(lowByte(envio[k]));
+      Serial3.write(highByte(envio[k]));
+      Serial3.write(lowByte(envio[k]));
     }
     // Fin trama
-    Serial.write((byte)0);       
+    Serial3.write((byte)0);       
     evento_tx = 0;
+    // desactiva el modo transmision en el conversor RS485
+    //delayMicroseconds(350);
+    while (Serial3.availableForWrite() != 127 ){
+        //Serial.print(" los datos disponibles son : ");
+        //Serial.println(Serial3.availableForWrite());
+    }
+    delayMicroseconds(170);
+    digitalWrite(pin_RST_RS485, LOW);
   }
 }//----------------   FIM MAIN ---------------------------------
 
