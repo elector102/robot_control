@@ -5,21 +5,35 @@
 #include <PID_v1.h>
 
 void funcion_t1();
+#define LEFT 1
+#define RIGHT 0
+#define BOARD_SIDE LEFT
+
+#if (BOARD_SIDE)
+  #define forward_direction HIGH
+  #define backward_direction LOW
+  byte IDslave = 1;
+#else
+  #define forward_direction LOW
+  #define backward_direction HIGH
+  byte IDslave = 2;
+#endif
 
 #define PWM_PERIODO_US 10000 //10khz
 #define DEBUG_MODE true
+#define USE_PID_MODE false
 // Diametro de la rueda en cm. cm = 2.54 * pulgadas
 #define DIAMETRO_CM 24.13 // 9.5 pulgadas
 #define PI 3.1415926535
 // cantidad de periodos que se tienen por vuelta del motor
-#define PULSOS_POR_VUELTAS 42
+#define PULSOS_POR_VUELTAS 42.0
 // perimetro en cm de la rueda
-double perimetro_rueda = PI * DIAMETRO_CM;
+float perimetro_rueda = PI * DIAMETRO_CM;
 // distancia recorrida por cada periodo de señal del motor
-double distancia_periodo = perimetro_rueda / PULSOS_POR_VUELTAS;
-double us_to_s = 1000000;
-double cm_to_m = 1;
-double metros_en_us = distancia_periodo * cm_to_m * us_to_s;
+float distancia_periodo = perimetro_rueda / PULSOS_POR_VUELTAS; // 1.8cm
+float us_to_s =  0.000001;
+float cm_to_m = 1;
+float cm_por_periodo = distancia_periodo;
 
 #define MAX_VEL_CM_S 1000
 
@@ -43,7 +57,8 @@ int entrada_analogica_motor_front = 0;
 capture_tc8_declaration(); // TC0 and channel 1 pin A7
 auto& capture_motor_front = capture_tc8;
 
-uint32_t status_motor_front, duty_motor_front, period_motor_front, period_motor_front_us, pulses_motor_front;
+uint32_t status_motor_front, duty_motor_front, period_motor_front, pulses_motor_front;
+float period_motor_front_us;
 
 double set_point_PID_front = 0;
 double output_PID_front = 0;
@@ -52,14 +67,15 @@ double PID_Kp_front = 1;
 double PID_Ki_front = 0;
 double PID_Kd_front = 0;
 
-PID PID_motor_front(&input_PID_front, &output_PID_front, &set_point_PID_front, PID_Kp_front, PID_Ki_front, PID_Kd_front, DIRECT);
-
+#if (USE_PID_MODE)
+  PID PID_motor_front(&input_PID_front, &output_PID_front, &set_point_PID_front, PID_Kp_front, PID_Ki_front, PID_Kd_front, DIRECT);
+#endif
 // Sentido de giro del motor
-#define z_f_pin_motor_back 7
+#define z_f_pin_motor_back 4
 // Pulsos de velocidad de salida
 //#define signal_pin_motor_back 5
 // Enable control
-#define el_pin_motor_back 4
+#define el_pin_motor_back 7
 
 // Definiciones motor back(Tracero)
 // Defining pwm object using pin 6, pin PC24 mapped to pin 6 on the DUE
@@ -72,7 +88,8 @@ int entrada_analogica_motor_back = 0;
 capture_tc6_declaration(); // TC0 and channel 1 pin pin digital 5
 auto& capture_motor_back = capture_tc6;
 
-uint32_t status_motor_back, duty_motor_back, period_motor_back, period_motor_back_us, pulses_motor_back;
+uint32_t status_motor_back, duty_motor_back, period_motor_back, pulses_motor_back;
+float period_motor_back_us;
 
 double set_point_PID_back = 0;
 double output_PID_back = 0;
@@ -80,9 +97,9 @@ double input_PID_back = 0;
 double PID_Kp_back = 1;
 double PID_Ki_back = 0;
 double PID_Kd_back = 0;
-
-PID PID_motor_back(&input_PID_back, &output_PID_back, &set_point_PID_back, PID_Kp_back, PID_Ki_back, PID_Kd_back, DIRECT);
-
+#if (USE_PID_MODE)
+  PID PID_motor_back(&input_PID_back, &output_PID_back, &set_point_PID_back, PID_Kp_back, PID_Ki_back, PID_Kd_back, DIRECT);
+#endif
 byte cantidad_sensores;
 byte cantidad_actuadores;
 
@@ -100,7 +117,7 @@ float sensor[20];
 float Ksensor = 1.0;
 // Mapeo
 float Kactuador = 1.0; 
-byte IDslave = 1;
+
 int contador = 0;
 int encabezado = 0, i = 0, j = 0, k = 0;
 
@@ -111,6 +128,35 @@ int pin_RST_RS485 = 10;
 // Modo-funcion
 byte modo = 0;
 byte estado_debug = 0;
+
+
+
+void printDouble( double val, byte precision){
+ // prints val with number of decimal places determine by precision
+ // precision is a number from 0 to 6 indicating the desired decimial places
+ // example: printDouble( 3.1415, 2); // prints 3.14 (two decimal places)
+
+ SerialUSB.print (int(val));  //prints the int part
+ if( precision > 0) {
+   SerialUSB.print("."); // print the decimal point
+   unsigned long frac;
+   unsigned long mult = 1;
+   byte padding = precision -1;
+   while(precision--)
+      mult *=10;
+      
+   if(val >= 0)
+     frac = (val - int(val)) * mult;
+   else
+     frac = (int(val)- val ) * mult;
+   unsigned long frac1 = frac;
+   while( frac1 /= 10 )
+     padding--;
+   while(  padding--)
+     SerialUSB.print("0");
+   SerialUSB.println(frac,DEC) ;
+ }
+}
 
 
 
@@ -179,7 +225,10 @@ void setup() {
   pinMode(z_f_pin_motor_back, OUTPUT);
   //pinMode(signal_pin_motor_back, INPUT);
   pinMode(el_pin_motor_back, OUTPUT);
-
+  digitalWrite(z_f_pin_motor_front, LOW);
+  digitalWrite(z_f_pin_motor_back, LOW);
+  digitalWrite(el_pin_motor_front, HIGH);
+  digitalWrite(el_pin_motor_back, HIGH);
   pinMode(pin_RST_RS485, OUTPUT);
   // desactiva el modo transmision en el conversor RS485
   digitalWrite(pin_RST_RS485, LOW);
@@ -187,7 +236,7 @@ void setup() {
   pwm_motor_front.set_duty(0);
   pwm_motor_back.set_duty(0);
   #if (DEBUG_MODE) 
-    Serial.begin(115200);
+    SerialUSB.begin(115200);
   #endif
   //Serial1.begin(1312500);
   Serial3.begin(256000);
@@ -197,12 +246,14 @@ void setup() {
   Timer0.start(10000);
   // Interrupcion timer 1
   Timer0.attachInterrupt(funcion_t1);
-  //turn the PID on
-  PID_motor_front.SetMode(AUTOMATIC);
-  //turn the PID on
-  PID_motor_back.SetMode(AUTOMATIC);
-  PID_motor_front.SetSampleTime(10);// in ms
-  PID_motor_back.SetSampleTime(10);// in ms
+  #if (USE_PID_MODE)
+    //turn the PID on
+    PID_motor_front.SetMode(AUTOMATIC);
+    //turn the PID on
+    PID_motor_back.SetMode(AUTOMATIC);
+    PID_motor_front.SetSampleTime(10);// in ms
+    PID_motor_back.SetSampleTime(10);// in ms
+  #endif
 }//----------------   FIM DO SETUP Y PARAMETROS -----------------------------
 
 //*************************************************************************************
@@ -216,61 +267,157 @@ void loop() {
       // Ejemplo: espejo en dato[0]
       sensor[0] = actuador[0]; 
 
-      set_point_PID_front = actuador[1]; // cm/s
+      if (actuador[1] > 0) {
+        digitalWrite(z_f_pin_motor_front, forward_direction);
+        #if (DEBUG_MODE) 
+          SerialUSB.print("sentido directo");
+        #endif
+      } else { 
+        digitalWrite(z_f_pin_motor_front, backward_direction);
+        #if (DEBUG_MODE) 
+          SerialUSB.print("sentido inverso");
+        #endif
+      }
+
+      set_point_PID_front = fabs(actuador[1]); // cm/s
+      #if (DEBUG_MODE) 
+        SerialUSB.print("el valor del actuador frontal con signo es : ");
+        SerialUSB.println(actuador[1],8);
+        SerialUSB.print("el valor absoluto del actuador frontal con signo es : ");
+        SerialUSB.println(set_point_PID_front,8);
+      #endif
 
 
       if ((PID_Kp_front != actuador[2]) || (PID_Kp_front != actuador[3]) || (PID_Kp_front != actuador[4]) ){
         PID_Kp_front = actuador[2];
         PID_Ki_front = actuador[3];
         PID_Kd_front = actuador[4];
-        PID_motor_front.SetTunings(PID_Kp_front, PID_Ki_front, PID_Kd_front);
+        #if (USE_PID_MODE)
+          PID_motor_front.SetTunings(PID_Kp_front, PID_Ki_front, PID_Kd_front);
+        #endif
       }
 
-      set_point_PID_back = actuador[5]; // cm/s
+      if (actuador[5] > 0) {
+        digitalWrite(z_f_pin_motor_back, forward_direction);
+        #if (DEBUG_MODE) 
+          SerialUSB.print("sentido directo");
+        #endif
+      } else { 
+        digitalWrite(z_f_pin_motor_back, backward_direction);
+        #if (DEBUG_MODE) 
+          SerialUSB.print("sentido inverso");
+        #endif
+      }
+      set_point_PID_back = fabs(actuador[5]); // cm/s
+      #if (DEBUG_MODE) 
+        SerialUSB.print("el valor del actuador trasero con signo es : ");
+        SerialUSB.println(actuador[5],8);
+        SerialUSB.print("el valor absoluto del actuador trasero con signo es : ");
+        SerialUSB.println(set_point_PID_back,8);
+      #endif
 
 
       if ((PID_Kp_back != actuador[6]) || (PID_Kp_back != actuador[7]) || (PID_Kp_back != actuador[8]) ){
         PID_Kp_back = actuador[6];
         PID_Ki_back = actuador[7];
         PID_Kd_back = actuador[8];
-        PID_motor_back.SetTunings(PID_Kp_back, PID_Ki_back, PID_Kd_back);
+        #if (USE_PID_MODE)
+          PID_motor_back.SetTunings(PID_Kp_back, PID_Ki_back, PID_Kd_back);
+        #endif
       }
 
       status_motor_front = capture_motor_front.get_duty_period_and_pulses(duty_motor_front, period_motor_front, pulses_motor_front);
-      period_motor_front_us = period_motor_front/(42);
-      input_PID_front = metros_en_us / period_motor_front_us;
+      period_motor_front_us = (float)period_motor_front / 42.0;
+      capture_motor_front.config(CAPTURE_TIME_WINDOW);
+      float input_PID_front_inter = distancia_periodo * period_motor_front_us * us_to_s;
+      //input_PID_front = isinf(input_PID_front_inter) ? 0 : input_PID_front_inter;
+      if isinf(input_PID_front_inter) {
+        input_PID_front = 0;
+        #if (DEBUG_MODE)
+          SerialUSB.print("Input PID front es inf, el valor es : ");
+          SerialUSB.println(input_PID_front_inter, 8);
+        #endif
+      } else {
+        input_PID_front = (double)input_PID_front_inter;
+        #if (DEBUG_MODE) 
+          SerialUSB.print("Input PID front, el valor es : ");
+          SerialUSB.println(input_PID_front_inter, 8);
+        #endif
+      }
       sensor[1] = input_PID_front;
 
       status_motor_back = capture_motor_back.get_duty_period_and_pulses(duty_motor_back, period_motor_back, pulses_motor_back);
-      period_motor_back_us = period_motor_back/(42);
-      input_PID_back = metros_en_us / period_motor_back_us;
+      period_motor_back_us = (float)period_motor_back / 42.0;
+      capture_motor_back.config(CAPTURE_TIME_WINDOW);
+      float input_PID_back_inter = distancia_periodo * period_motor_back_us * us_to_s;
+      //input_PID_back = isinf(input_PID_back_inter) ? 0 : input_PID_back_inter;
+      if isinf(input_PID_back_inter) {
+        input_PID_back = 0;
+        #if (DEBUG_MODE)
+          SerialUSB.print("Input PID back es inf, el valor es : ");
+          SerialUSB.println(input_PID_back_inter, 8);
+        #endif
+      } else {
+        input_PID_back = (double)input_PID_back_inter;
+        #if (DEBUG_MODE) 
+          SerialUSB.print("Input PID back, el valor es : ");
+          SerialUSB.println(input_PID_back_inter, 8);
+        #endif
+      }
       sensor[2] = input_PID_back;
       
-      // PID calculation and command
-      PID_motor_front.Compute();
-      salida_pwm_motor_front = map(output_PID_front, 0, MAX_VEL_CM_S, 0, PWM_PERIODO_US);
-      pwm_motor_front.set_duty(salida_pwm_motor_front);
-      
-      PID_motor_back.Compute();
-      salida_pwm_motor_back = map(output_PID_back, 0, MAX_VEL_CM_S, 0, PWM_PERIODO_US);
-      pwm_motor_back.set_duty(salida_pwm_motor_back);
+      #if (USE_PID_MODE) 
+        // PID calculation and command
+        PID_motor_front.Compute();
+        output_PID_front = output_PID_front > MAX_VEL_CM_S ? MAX_VEL_CM_S : output_PID_front;
+        salida_pwm_motor_front = map( output_PID_front, 0, MAX_VEL_CM_S, 0, PWM_PERIODO_US);
+        pwm_motor_front.set_duty(salida_pwm_motor_front);
+        
+        PID_motor_back.Compute();
+        output_PID_back = output_PID_back > MAX_VEL_CM_S ? MAX_VEL_CM_S : output_PID_back;
+        salida_pwm_motor_back = map(output_PID_back, 0, MAX_VEL_CM_S, 0, PWM_PERIODO_US);
+        pwm_motor_back.set_duty(salida_pwm_motor_back);
+      #else 
+        salida_pwm_motor_front = map(set_point_PID_front, 0, MAX_VEL_CM_S, 0, PWM_PERIODO_US);
+        pwm_motor_front.set_duty(salida_pwm_motor_front);
 
+        salida_pwm_motor_back = map(set_point_PID_back, 0, MAX_VEL_CM_S, 0, PWM_PERIODO_US);
+        pwm_motor_back.set_duty(salida_pwm_motor_back);
+      #endif
 
       #if (DEBUG_MODE) 
-        Serial.println("El valor de los encoder en cm por s es :");
-        Serial.print("el motor A : ");
-        Serial.println(sensor[1]);
-        Serial.print("el motor B : ");
-        Serial.println(sensor[2]);
-        Serial.print("Metros en ms motor : ");
-        Serial.println(metros_en_us);
-        Serial.print("PID output motor front in cm/s : ");
-        Serial.println(output_PID_front);
-        Serial.print("PID output motor back in cm/s : ");
-        Serial.println(output_PID_back);
+        SerialUSB.print("Sensado motor front en cm/s es : ");
+        SerialUSB.println(sensor[1],8);
+        SerialUSB.print("Sensado motor back en cm/s es: ");
+        SerialUSB.println(sensor[2],8);
+        SerialUSB.print("Metros en ms motor : ");
+        SerialUSB.println(cm_por_periodo, 7);
+        SerialUSB.print("distancia_periodo motor : ");
+        SerialUSB.println(distancia_periodo, 3);
+        SerialUSB.print("perimetro_rueda motor : ");
+        SerialUSB.println(perimetro_rueda, 3);
+        SerialUSB.print("us_to_s motor : ");
+        SerialUSB.println(us_to_s, 7);
+        SerialUSB.print("Periodo motor front : ");
+        SerialUSB.println(period_motor_front_us);
+        SerialUSB.print("Periodo motor back : ");
+        SerialUSB.println(period_motor_back_us);
+        #if (USE_PID_MODE)
+          SerialUSB.print("PID output motor front in cm/s : ");
+          SerialUSB.println(output_PID_front,8);
+          printDouble(output_PID_front, 8);
+          SerialUSB.print("PID output motor back in cm/s : ");
+          SerialUSB.println(output_PID_back, 8);
+          printDouble(output_PID_back, 8);
+        #else
+          SerialUSB.print("PWM out motor front in cm/s : ");
+          SerialUSB.println(salida_pwm_motor_front);
+          SerialUSB.print("PWM out motor back in cm/s : ");
+          SerialUSB.println(salida_pwm_motor_back);
+        #endif
       #endif
-      capture_motor_front.config(CAPTURE_TIME_WINDOW);
-      capture_motor_back.config(CAPTURE_TIME_WINDOW);
+      
+      
       
     }
     // MODO = 0 --> STOP
@@ -298,6 +445,7 @@ void loop() {
     cantidad_sensores = inData1[2];
     for (k = 0; k < cantidad_actuadores; k++) {
       // Arma dato de 15 bits de magnitud
+      
       actuador[k] = ((float)256.00 * (0x7F & inData1[2 * k + 4]) + inData1[2 * k + 3]); 
       // Signo en bit 16
       if ((inData1[2 * k + 4] & 0x80) > 0) {
