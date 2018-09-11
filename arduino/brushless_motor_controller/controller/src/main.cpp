@@ -7,7 +7,7 @@
 void funcion_t1();
 #define LEFT 1
 #define RIGHT 0
-#define BOARD_SIDE LEFT
+#define BOARD_SIDE RIGHT
 
 #if (BOARD_SIDE)
   #define forward_direction HIGH
@@ -20,7 +20,8 @@ void funcion_t1();
 #endif
 
 #define PWM_PERIODO_US 10000 //10khz
-#define DEBUG_MODE true
+#define PWM_PERIODO_US_MIN 300
+#define DEBUG_MODE false
 #define USE_PID_MODE false
 // Diametro de la rueda en cm. cm = 2.54 * pulgadas
 #define DIAMETRO_CM 24.13 // 9.5 pulgadas
@@ -129,6 +130,7 @@ int pin_RST_RS485 = 10;
 byte modo = 0;
 byte estado_debug = 0;
 
+int comunication_control_count = 0;
 
 
 void printDouble( double val, byte precision){
@@ -233,8 +235,8 @@ void setup() {
   // desactiva el modo transmision en el conversor RS485
   digitalWrite(pin_RST_RS485, LOW);
 
-  pwm_motor_front.set_duty(0);
-  pwm_motor_back.set_duty(0);
+  pwm_motor_front.set_duty(PWM_PERIODO_US_MIN);
+  pwm_motor_back.set_duty(PWM_PERIODO_US_MIN);
   #if (DEBUG_MODE) 
     SerialUSB.begin(115200);
   #endif
@@ -262,7 +264,9 @@ void setup() {
 void loop() {
   // Cada 1ms ejecuta este codigo - Lazo de control
   if (evento_control == 1) {
-    
+    if (comunication_control_count >= 10) {
+      modo = 0;
+    }
     if (modo == 1) {
       // Ejemplo: espejo en dato[0]
       sensor[0] = actuador[0]; 
@@ -370,18 +374,18 @@ void loop() {
         // PID calculation and command
         PID_motor_front.Compute();
         output_PID_front = output_PID_front > MAX_VEL_CM_S ? MAX_VEL_CM_S : output_PID_front;
-        salida_pwm_motor_front = map( output_PID_front, 0, MAX_VEL_CM_S, 0, PWM_PERIODO_US);
+        salida_pwm_motor_front = map( output_PID_front, 0, MAX_VEL_CM_S, PWM_PERIODO_US_MIN, PWM_PERIODO_US);
         pwm_motor_front.set_duty(salida_pwm_motor_front);
         
         PID_motor_back.Compute();
         output_PID_back = output_PID_back > MAX_VEL_CM_S ? MAX_VEL_CM_S : output_PID_back;
-        salida_pwm_motor_back = map(output_PID_back, 0, MAX_VEL_CM_S, 0, PWM_PERIODO_US);
+        salida_pwm_motor_back = map(output_PID_back, 0, MAX_VEL_CM_S, PWM_PERIODO_US_MIN, PWM_PERIODO_US);
         pwm_motor_back.set_duty(salida_pwm_motor_back);
       #else 
-        salida_pwm_motor_front = map(set_point_PID_front, 0, MAX_VEL_CM_S, 0, PWM_PERIODO_US);
+        salida_pwm_motor_front = map(set_point_PID_front, 0, MAX_VEL_CM_S, PWM_PERIODO_US_MIN, PWM_PERIODO_US);
         pwm_motor_front.set_duty(salida_pwm_motor_front);
 
-        salida_pwm_motor_back = map(set_point_PID_back, 0, MAX_VEL_CM_S, 0, PWM_PERIODO_US);
+        salida_pwm_motor_back = map(set_point_PID_back, 0, MAX_VEL_CM_S, PWM_PERIODO_US_MIN, PWM_PERIODO_US);
         pwm_motor_back.set_duty(salida_pwm_motor_back);
       #endif
 
@@ -423,9 +427,8 @@ void loop() {
     // MODO = 0 --> STOP
     if (modo == 0) {
       // Incluir Aqui codigo de parada
-      if(sensor[0] > 30000.0) {
-        sensor[0] = 0.0;
-       }
+      pwm_motor_front.set_duty(PWM_PERIODO_US_MIN);
+      pwm_motor_back.set_duty(PWM_PERIODO_US_MIN);
     }
     evento_control = 0;
   }
@@ -471,6 +474,7 @@ void loop() {
       digitalWrite(30, LOW);
       estado_debug = 1;
     }
+    comunication_control_count = 0;
     // DEBUG
     //sensor[0] = sensor[0] + 1.0;
     // Envia cabecera FF FF
@@ -512,6 +516,7 @@ void loop() {
 void funcion_t1() {
   evento_control = 1;
   contador++;
+  comunication_control_count++;
   if (contador >= 100) {
     // Tarea cada 100 ms
     evento_tarea_1 = 1; 
