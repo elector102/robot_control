@@ -57,75 +57,55 @@ float cm_por_periodo = distancia_periodo;
 #define MAX_VEL_CM_S 800.0
 
 // Sentido de giro del motor
-#define z_f_pin_motor_front 9
+int z_f_pin_motor[2] ={9, 4};
 // Pulsos de velocidad de salida
 //#define signal_pin_motor_front 10
 // Enable control
-#define el_pin_motor_front 12
+int el_pin_motor[2] = {12, 7};
 
-
+double input_PID_inter[2];
 // Definiciones motor front(Delantero)
 // Defining pwm object using pin 6, pin PC24 mapped to pin 6 on the DUE
 // This object uses PWM channel 0
 #define CAPTURE_TIME_WINDOW 400000 // usecs
 arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML5_PC22> pwm_motor_front;
 
-double salida_pwm_motor_front_cm = 0;
-double salida_pwm_motor_front = 0;
-int entrada_analogica_motor_front = 0;
+double salida_pwm_motor_cm[2] = {0, 0};
+double salida_pwm_motor[2] = {0, 0};
+int entrada_analogica_motor[2] = {0, 0};
 
 capture_tc8_declaration(); // TC0 and channel 1 pin A7
-auto& capture_motor_front = capture_tc8;
+capture_tc6_declaration(); // TC0 and channel 1 pin pin digital 5
+auto& capture_motor[2] = {capture_tc8, capture_tc6};
 
-uint32_t status_motor_front, duty_motor_front, period_motor_front, pulses_motor_front;
-double period_motor_front_us;
+uint32_t status_motor[2], duty_motor[2], period_motor[2], pulses_motor[2];
+double period_motor_us[2];
 
-double signal_set_point_front = 0;
-double set_point_PID_front_cm = 0;
-double set_point_PID_front = 0;
-double output_PID_front = 0;
-double output_PID_front_cm = 0;
-double input_PID_front_cm = 0;
+double signal_set_point[2] = {0, 0};
+double set_point_PID_cm[2] = {0, 0};
+double set_point_PID[2] = {0, 0};
+double output_PID[2] = {0, 0};
+double output_PID_cm[2] = {0, 0};
+double input_PID_cm[2] = {0, 0};
 double input_PID[2] = {0, 0};
-double PID_Kp_front = 1;
-double PID_Ki_front = 0;
-double PID_Kd_front = 0;
+double PID_Kp[2] = {1, 1};
+double PID_Ki[2] = {0, 0};
+double PID_Kd[2] = {0, 0};
 
 #if (USE_PID_MODE)
-  PID PID_motor_front(&input_PID[FRONT], &output_PID_front, &set_point_PID_front, PID_Kp_front, PID_Ki_front, PID_Kd_front, DIRECT);
+  PID PID_motor_front(&input_PID[FRONT], &output_PID[FRONT], &set_point_PID[FRONT], PID_Kp[FRONT], PID_Ki[FRONT], PID_Kd[FRONT], DIRECT);
   
 #endif
 // Sentido de giro del motor
-#define z_f_pin_motor_back 4
 // Pulsos de velocidad de salida
 //#define signal_pin_motor_back 5
 // Enable control
-#define el_pin_motor_back 7
 
 // Definiciones motor back(Tracero)
 // Defining pwm object using pin 6, pin PC24 mapped to pin 6 on the DUE
 // This object uses PWM channel 0
 arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML7_PC24> pwm_motor_back;
 
-double salida_pwm_motor_back_cm = 0;
-double salida_pwm_motor_back = 0;
-int entrada_analogica_motor_back = 0;
-
-capture_tc6_declaration(); // TC0 and channel 1 pin pin digital 5
-auto& capture_motor_back = capture_tc6;
-
-uint32_t status_motor_back, duty_motor_back, period_motor_back, pulses_motor_back;
-double period_motor_back_us;
-
-double signal_set_point_back = 0;
-double set_point_PID_back_cm = 0;
-double set_point_PID_back = 0;
-double output_PID_back = 0;
-double output_PID_back_cm = 0;
-double input_PID_back_cm = 0;
-double PID_Kp_back = 10;
-double PID_Ki_back = 0;
-double PID_Kd_back = 0;
 #if (USE_PID_MODE)
   PID PID_motor_back(&input_PID[BACK], &output_PID_back, &set_point_PID_back, PID_Kp_back, PID_Ki_back, PID_Kd_back, DIRECT);
 
@@ -255,20 +235,20 @@ bool estimate_rotation_direction(uint motor){
 //*************************************************************************************
 void setup() {
   // Initialization of capture objects
-  capture_motor_front.config(CAPTURE_TIME_WINDOW);
-  capture_motor_back.config(CAPTURE_TIME_WINDOW);
+  capture_motor[FRONT].config(CAPTURE_TIME_WINDOW);
+  capture_motor[BACK].config(CAPTURE_TIME_WINDOW);
   // Put your setup code here, to run once:
   // Seteado a 10Khz para probar
   pwm_motor_front.start(PWM_PERIODO_US, 1000);
   pwm_motor_back.start(PWM_PERIODO_US, 1000);
 
-  pinMode(z_f_pin_motor_front, OUTPUT);
+  pinMode(z_f_pin_motor[FRONT], OUTPUT);
   //pinMode(signal_pin_motor_front, INPUT);
-  pinMode(el_pin_motor_front, OUTPUT);
+  pinMode(el_pin_motor[FRONT], OUTPUT);
 
-  pinMode(z_f_pin_motor_back, OUTPUT);
+  pinMode(z_f_pin_motor[BACK], OUTPUT);
   //pinMode(signal_pin_motor_back, INPUT);
-  pinMode(el_pin_motor_back, OUTPUT);
+  pinMode(el_pin_motor[BACK], OUTPUT);
   digitalWrite(z_f_pin_motor_front, LOW);
   digitalWrite(z_f_pin_motor_back, LOW);
 
@@ -302,8 +282,8 @@ void setup() {
     PID_motor_front.SetOutputLimits(-1.0, 1.0);
     PID_motor_back.SetOutputLimits(-1.0, 1.0);
   #endif
-  digitalWrite(el_pin_motor_front, HIGH);
-  digitalWrite(el_pin_motor_back, HIGH);
+  digitalWrite(el_pin_motor[FRONT], HIGH);
+  digitalWrite(el_pin_motor[BACK], HIGH);
   delay(100);
 }//----------------   FIM DO SETUP Y PARAMETROS -----------------------------
 
@@ -318,20 +298,20 @@ void loop() {
       modo = 0;
     }
     if (modo == 1) {
-      digitalWrite(el_pin_motor_front, HIGH);
-      digitalWrite(el_pin_motor_back, HIGH);
+      digitalWrite(el_pin_motor[FRONT], HIGH);
+      digitalWrite(el_pin_motor[BACK], HIGH);
       // Ejemplo: espejo en dato[0]
       digitalWrite(EVENT_CONTROL_DEBUG_PIN, HIGH);
       sensor[0] = actuador[0]; 
-      signal_set_point_front = (double)actuador[1] / (double)Kactuador;
+      signal_set_point[FRONT] = (double)actuador[1] / (double)Kactuador;
       
-      if (set_point_PID_front_cm != signal_set_point_front) {
-        set_point_PID_front_cm = signal_set_point_front; // cm/s
+      if (set_point_PID_cm[FRONT] != signal_set_point[FRONT]) {
+        set_point_PID_cm[FRONT] = signal_set_point[FRONT]; // cm/s
         //
-        set_point_PID_front_cm = set_point_PID_front_cm > MAX_VEL_CM_S ? MAX_VEL_CM_S : set_point_PID_front_cm;
-        set_point_PID_front_cm = set_point_PID_front_cm < -MAX_VEL_CM_S ? -MAX_VEL_CM_S : set_point_PID_front_cm;
+        set_point_PID_cm[FRONT] = set_point_PID_cm[FRONT] > MAX_VEL_CM_S ? MAX_VEL_CM_S : set_point_PID_cm[FRONT];
+        set_point_PID_cm[FRONT] = set_point_PID_cm[FRONT] < -MAX_VEL_CM_S ? -MAX_VEL_CM_S : set_point_PID_cm[FRONT];
         
-        set_point_PID_front = doubleMap(set_point_PID_front_cm, -MAX_VEL_CM_S, MAX_VEL_CM_S, -1.0, 1.0);
+        set_point_PID[FRONT] = doubleMap(set_point_PID_cm[FRONT], -MAX_VEL_CM_S, MAX_VEL_CM_S, -1.0, 1.0);
       }
       #if (DEBUG_MODE) 
         SerialUSB.print("el valor del actuador frontal con signo es : ");
@@ -339,22 +319,22 @@ void loop() {
       #endif
 
 
-      if ((PID_Kp_front != actuador[2]) || (PID_Kp_front != actuador[3]) || (PID_Kp_front != actuador[4]) ){
-        PID_Kp_front = actuador[2];
-        PID_Ki_front = actuador[3];
-        PID_Kd_front = actuador[4];
+      if ((PID_Kp[FRONT] != actuador[2]) || (PID_Kp[FRONT] != actuador[3]) || (PID_Kp[FRONT] != actuador[4]) ){
+        PID_Kp[FRONT] = actuador[2];
+        PID_Ki[FRONT] = actuador[3];
+        PID_Kd[FRONT] = actuador[4];
         #if (USE_PID_MODE)
-          PID_motor_front.SetTunings(PID_Kp_front, PID_Ki_front, PID_Kd_front);
+          PID_motor_front.SetTunings(PID_Kp[FRONT], PID_Ki[FRONT], PID_Kd[FRONT]);
         #endif
       }
-      signal_set_point_back = actuador[5] / Kactuador;
-      if (set_point_PID_back_cm != signal_set_point_back) {
-        set_point_PID_back_cm = signal_set_point_back; // cm/s
+      signal_set_point[BACK] = actuador[5] / Kactuador;
+      if (set_point_PID_cm[BACK] != signal_set_point[BACK]) {
+        set_point_PID_cm[BACK] = signal_set_point[BACK]; // cm/s
         //
-        set_point_PID_back_cm = set_point_PID_back_cm > MAX_VEL_CM_S ? MAX_VEL_CM_S : set_point_PID_back_cm;
-        set_point_PID_back_cm = set_point_PID_back_cm < -MAX_VEL_CM_S ? -MAX_VEL_CM_S : set_point_PID_back_cm;
+        set_point_PID_cm[BACK] = set_point_PID_cm[BACK] > MAX_VEL_CM_S ? MAX_VEL_CM_S : set_point_PID_cm[BACK];
+        set_point_PID_cm[BACK] = set_point_PID_cm[BACK] < -MAX_VEL_CM_S ? -MAX_VEL_CM_S : set_point_PID_cm[BACK];
 
-        set_point_PID_back = doubleMap(set_point_PID_back_cm, -MAX_VEL_CM_S, MAX_VEL_CM_S, -1.0, 1.0);
+        set_point_PID_back = doubleMap(set_point_PID_cm[BACK], -MAX_VEL_CM_S, MAX_VEL_CM_S, -1.0, 1.0);
       }
       #if (DEBUG_MODE) 
         SerialUSB.print("el valor del actuador trasero con signo es : ");
@@ -362,131 +342,131 @@ void loop() {
       #endif
 
 
-      if ((PID_Kp_back != actuador[6]) || (PID_Kp_back != actuador[7]) || (PID_Kp_back != actuador[8]) ){
-        PID_Kp_back = actuador[6];
-        PID_Ki_back = actuador[7];
-        PID_Kd_back = actuador[8];
+      if ((PID_Kp[BACK] != actuador[6]) || (PID_Kp[BACK] != actuador[7]) || (PID_Kp[BACK] != actuador[8]) ){
+        PID_Kp[BACK] = actuador[6];
+        PID_Ki[BACK] = actuador[7];
+        PID_Kd[BACK] = actuador[8];
         #if (USE_PID_MODE)
-          PID_motor_back.SetTunings(PID_Kp_back, PID_Ki_back, PID_Kd_back);
+          PID_motor_back.SetTunings(PID_Kp[BACK], PID_Ki[BACK], PID_Kd[BACK]);
         #endif
       }
       estimate_rotation_direction(FRONT);
-      status_motor_front = capture_motor_front.get_duty_period_and_pulses(duty_motor_front, period_motor_front, pulses_motor_front);
-      period_motor_front_us = (double)period_motor_front / (double)capture_motor_front.ticks_per_usec();
+      status_motor[FRONT] = capture_motor[FRONT].get_duty_period_and_pulses(duty_motor[FRONT], period_motor[FRONT], pulses_motor[FRONT]);
+      period_motor_us[FRONT] = (double)period_motor[FRONT] / (double)capture_motor[FRONT].ticks_per_usec();
       //capture_motor_front.config(CAPTURE_TIME_WINDOW);
-      double input_PID_front_inter = ((double)distancia_periodo * (double)us_to_s)/ period_motor_front_us;
+      input_PID_inter[FRONT] = ((double)distancia_periodo * (double)us_to_s)/ period_motor_us[FRONT];
       //input_PID_front = isinf(input_PID_front_inter) ? 0 : input_PID_front_inter;
-      if isinf(input_PID_front_inter) {
+      if isinf(input_PID_inter[FRONT]) {
         input_PID_front_cm = 0.0;
         #if (DEBUG_MODE)
           SerialUSB.print("Input PID front es inf, el valor es : ");
-          SerialUSB.println(input_PID_front_inter, 8);
+          SerialUSB.println(input_PID_inter[FRONT], 8);
         #endif
       } else {
         if (current_motor_direction[FRONT] == STOP_STATE) {
-          input_PID_front_cm = (double)input_PID_front_inter * output_motor_direction[FRONT];
+          input_PID_cm[FRONT] = (double)input_PID_inter[FRONT] * output_motor_direction[FRONT];
         } else {
-          input_PID_front_cm = (double)input_PID_front_inter * (double)current_motor_direction[FRONT];
+          input_PID_cm[FRONT] = (double)input_PID_inter[FRONT] * (double)current_motor_direction[FRONT];
         }
         #if (DEBUG_MODE) 
           SerialUSB.print("Input PID front, el valor es : ");
-          SerialUSB.println(input_PID_front_inter, 8);
+          SerialUSB.println(input_PID_inter[FRONT], 8);
           SerialUSB.print("Input PID front, el valor en cm es : ");
-          SerialUSB.println(input_PID_front_cm, 8);
+          SerialUSB.println(input_PID_cm[FRONT], 8);
         #endif
       }
-      input_PID_front_cm = input_PID_front_cm > MAX_VEL_CM_S ? MAX_VEL_CM_S : input_PID_front_cm;
-      input_PID_front_cm = input_PID_front_cm < -MAX_VEL_CM_S ? -MAX_VEL_CM_S : input_PID_front_cm;
+      input_PID_cm[FRONT] = input_PID_cm[FRONT] > MAX_VEL_CM_S ? MAX_VEL_CM_S : input_PID_cm[FRONT];
+      input_PID_cm[FRONT] = input_PID_cm[FRONT] < -MAX_VEL_CM_S ? -MAX_VEL_CM_S : input_PID_cm[FRONT];
 
-      input_PID[FRONT] = doubleMap(input_PID_front_cm, -MAX_VEL_CM_S, MAX_VEL_CM_S, -1.0, 1.0);
+      input_PID[FRONT] = doubleMap(input_PID_cm[FRONT], -MAX_VEL_CM_S, MAX_VEL_CM_S, -1.0, 1.0);
       sensor[1] = input_PID[FRONT];
 
 
       estimate_rotation_direction(BACK);
-      status_motor_back = capture_motor_back.get_duty_period_and_pulses(duty_motor_back, period_motor_back, pulses_motor_back);
-      period_motor_back_us = (double)period_motor_back / (double)capture_motor_back.ticks_per_usec();
+      status_motor[BACK] = capture_motor[BACK].get_duty_period_and_pulses(duty_motor[BACK], period_motor[BACK], pulses_motor[BACK]);
+      period_motor_us[BACK] = (double)period_motor[BACK] / (double)capture_motor[BACK].ticks_per_usec();
       //capture_motor_back.config(CAPTURE_TIME_WINDOW);
-      double input_PID_back_inter = ((double)distancia_periodo * (double)us_to_s)/ period_motor_back_us;
+      input_PID_inter[BACK] = ((double)distancia_periodo * (double)us_to_s)/ period_motor_us[BACK];
       //input_PID_back = isinf(input_PID_back_inter) ? 0 : input_PID_back_inter;
-      if isinf(input_PID_back_inter) {
-        input_PID_back_cm = 0.0;
+      if isinf(input_PID_inter[BACK]) {
+        input_PID_cm[BACK] = 0.0;
         #if (DEBUG_MODE)
           SerialUSB.print("Input PID back es inf, el valor es : ");
-          SerialUSB.println(input_PID_back_inter, 8);
+          SerialUSB.println(input_PID_inter[BACK], 8);
         #endif
       } else {
         if (current_motor_direction[BACK] == STOP_STATE) {
-          input_PID_back_cm = (double)input_PID_back_inter * output_motor_direction[BACK];
+          input_PID_cm[BACK] = (double)input_PID_inter[BACK] * output_motor_direction[BACK];
         } else {
-          input_PID_back_cm = (double)input_PID_back_inter * (double)current_motor_direction[BACK];
+          input_PID_cm[BACK] = (double)input_PID_inter[BACK] * (double)current_motor_direction[BACK];
         }
         #if (DEBUG_MODE) 
           SerialUSB.print("Input PID back, el valor es : ");
-          SerialUSB.println(input_PID_back_inter, 8);
+          SerialUSB.println(input_PID_inter[BACK], 8);
           SerialUSB.print("Input PID back, el valor en cm es : ");
-          SerialUSB.println(input_PID_back_cm, 8);
+          SerialUSB.println(input_PID_cm[BACK], 8);
         #endif
       }
 
-      input_PID_back_cm = input_PID_back_cm > MAX_VEL_CM_S ? MAX_VEL_CM_S : input_PID_back_cm;
-      input_PID_back_cm = input_PID_back_cm < -MAX_VEL_CM_S ? -MAX_VEL_CM_S : input_PID_back_cm;
+      input_PID_cm[BACK] = input_PID_cm[BACK] > MAX_VEL_CM_S ? MAX_VEL_CM_S : input_PID_cm[BACK];
+      input_PID_cm[BACK] = input_PID_cm[BACK] < -MAX_VEL_CM_S ? -MAX_VEL_CM_S : input_PID_cm[BACK];
 
-      input_PID[BACK] = doubleMap(input_PID_back_cm, -MAX_VEL_CM_S, MAX_VEL_CM_S, -1.0, 1.0);
+      input_PID[BACK] = doubleMap(input_PID_cm[BACK], -MAX_VEL_CM_S, MAX_VEL_CM_S, -1.0, 1.0);
       sensor[2] = input_PID[BACK];
       
       #if (USE_PID_MODE) 
         // PID calculation and command
         PID_motor_front.Compute();
 
-        salida_pwm_motor_front = output_PID_front ;
-        salida_pwm_motor_front_cm = MAX_VEL_CM_S * salida_pwm_motor_front;
+        salida_pwm_motor[FRONT] = output_PID[FRONT] ;
+        salida_pwm_motor_cm[FRONT] = MAX_VEL_CM_S * salida_pwm_motor[FRONT];
         
         PID_motor_back.Compute();
         
 
-        salida_pwm_motor_back = output_PID_back ;
-        salida_pwm_motor_back_cm = MAX_VEL_CM_S * salida_pwm_motor_back;
+        salida_pwm_motor[BACK] = output_PID[BACK] ;
+        salida_pwm_motor_cm[BACK] = MAX_VEL_CM_S * salida_pwm_motor[BACK];
 
       #else 
-        salida_pwm_motor_front = set_point_PID_front;
+        salida_pwm_motor[FRONT] = set_point_PID[FRONT];
 
-        salida_pwm_motor_back = set_point_PID_back;
+        salida_pwm_motor[BACK] = set_point_PID[BACK];
 
 
       #endif
       
-      salida_pwm_motor_front = salida_pwm_motor_front > 1.0 ? 1 : salida_pwm_motor_front;
-      salida_pwm_motor_front = salida_pwm_motor_front < -1.0 ? -1 : salida_pwm_motor_front;
-      sensor[3] = output_PID_front;
-      if (salida_pwm_motor_front > 0.001) {
-        digitalWrite(z_f_pin_motor_front, forward_direction);
+      salida_pwm_motor[FRONT] = salida_pwm_motor[FRONT] > 1.0 ? 1 : salida_pwm_motor[FRONT];
+      salida_pwm_motor[FRONT] = salida_pwm_motor[FRONT] < -1.0 ? -1 : salida_pwm_motor[FRONT];
+      sensor[3] = output_PID[FRONT];
+      if (salida_pwm_motoR[FRONT] > 0.001) {
+        digitalWrite(z_f_pin_motor[FRONT], forward_direction);
         output_motor_direction[FRONT] = FORWARD_ROTATION_STATE; 
-      } else if (salida_pwm_motor_front < -0.001){ 
-        digitalWrite(z_f_pin_motor_front, backward_direction);
+      } else if (salida_pwm_motor[FRONT] < -0.001){ 
+        digitalWrite(z_f_pin_motor[FRONT], backward_direction);
         output_motor_direction[FRONT] = BACKWARD_ROTATION_STATE;
       } else {
         output_motor_direction[FRONT] = STOP_STATE;
       }
-      salida_pwm_motor_front = doubleMap(fabs(salida_pwm_motor_front), 0.0, 1.0, PWM_PERIODO_US_MIN, PWM_PERIODO_US);
-      pwm_motor_front.set_duty(salida_pwm_motor_front);
+      salida_pwm_motor[FRONT] = doubleMap(fabs(salida_pwm_motor[FRONT]), 0.0, 1.0, PWM_PERIODO_US_MIN, PWM_PERIODO_US);
+      pwm_motor_front.set_duty(salida_pwm_motor[FRONT]);
 
-      salida_pwm_motor_back = salida_pwm_motor_back > 1.0 ? 1 : salida_pwm_motor_back;
-      salida_pwm_motor_back = salida_pwm_motor_back < -1.0 ? -1 : salida_pwm_motor_back;
-      sensor[4] = output_PID_back;
-      if (salida_pwm_motor_back > 0.001) {
-        digitalWrite(z_f_pin_motor_back, forward_direction);
+      salida_pwm_motor[BACK] = salida_pwm_motor[BACK] > 1.0 ? 1 : salida_pwm_motor[BACK];
+      salida_pwm_motor[BACK] = salida_pwm_motor[BACK] < -1.0 ? -1 : salida_pwm_motor[BACK];
+      sensor[4] = output_PID[BACK];
+      if (salida_pwm_motor[BACK] > 0.001) {
+        digitalWrite(z_f_pin_motor[BACK], forward_direction);
         output_motor_direction[BACK] = FORWARD_ROTATION_STATE; 
-      } else if (salida_pwm_motor_back < -0.001){ 
-        digitalWrite(z_f_pin_motor_back, backward_direction);
+      } else if (salida_pwm_motor[BACK] < -0.001){ 
+        digitalWrite(z_f_pin_motor[BACK], backward_direction);
         output_motor_direction[BACK] = BACKWARD_ROTATION_STATE;
       } else {
         output_motor_direction[BACK] = STOP_STATE;
       }
-      salida_pwm_motor_back = doubleMap(fabs(salida_pwm_motor_back), 0.0, 1.0, PWM_PERIODO_US_MIN, PWM_PERIODO_US);
-      pwm_motor_back.set_duty(salida_pwm_motor_back);
+      salida_pwm_motor[BACK] = doubleMap(fabs(salida_pwm_motor[BACK]), 0.0, 1.0, PWM_PERIODO_US_MIN, PWM_PERIODO_US);
+      pwm_motor_back.set_duty(salida_pwm_motor[BACK]);
 
-      sensor[5] = set_point_PID_front;
-      sensor[6] = set_point_PID_back;
+      sensor[5] = set_point_PID[FRONT];
+      sensor[6] = set_point_PID[BACK];
 
       #if (DEBUG_MODE) 
         SerialUSB.print("Sensado motor front en cm/s es : ");
@@ -502,19 +482,19 @@ void loop() {
         //SerialUSB.print("us_to_s motor : ");
         //SerialUSB.println(us_to_s, 7);
         SerialUSB.print("Periodo motor front : ");
-        SerialUSB.println(period_motor_front_us);
+        SerialUSB.println(period_motor_us[FRONT]);
         SerialUSB.print("Periodo motor back : ");
-        SerialUSB.println(period_motor_back_us);
+        SerialUSB.println(period_motor_us[BACK]);
         #if (USE_PID_MODE)
           SerialUSB.print("PID output motor front in cm/s : ");
-          SerialUSB.println(output_PID_front,8);
+          SerialUSB.println(output_PID[FRONT],8);
           SerialUSB.print("PID output motor back in cm/s : ");
-          SerialUSB.println(output_PID_back, 8);
+          SerialUSB.println(output_PID[BACK], 8);
         #else
           SerialUSB.print("PWM out motor front in cm/s : ");
-          SerialUSB.println(salida_pwm_motor_front);
+          SerialUSB.println(salida_pwm_motor[FRONT]);
           SerialUSB.print("PWM out motor back in cm/s : ");
-          SerialUSB.println(salida_pwm_motor_back);
+          SerialUSB.println(salida_pwm_motor[BACK]);
         #endif
       #endif
       
@@ -526,8 +506,8 @@ void loop() {
       // Incluir Aqui codigo de parada
       pwm_motor_front.set_duty(PWM_PERIODO_US_MIN);
       pwm_motor_back.set_duty(PWM_PERIODO_US_MIN);
-      digitalWrite(el_pin_motor_front, LOW);
-      digitalWrite(el_pin_motor_back, LOW);
+      digitalWrite(el_pin_motor[FRONT], LOW);
+      digitalWrite(el_pin_motor[BACK], LOW);
     }
     evento_control = 0;
   }
