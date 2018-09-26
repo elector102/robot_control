@@ -76,7 +76,8 @@ int entrada_analogica_motor[2] = {0, 0};
 
 capture_tc8_declaration(); // TC0 and channel 1 pin A7
 capture_tc6_declaration(); // TC0 and channel 1 pin pin digital 5
-auto& capture_motor[2] = {capture_tc8, capture_tc6};
+auto& capture_motor_front = capture_tc8;
+auto& capture_motor_back = capture_tc6;
 
 uint32_t status_motor[2], duty_motor[2], period_motor[2], pulses_motor[2];
 double period_motor_us[2];
@@ -93,7 +94,7 @@ double PID_Ki[2] = {0, 0};
 double PID_Kd[2] = {0, 0};
 
 #if (USE_PID_MODE)
-  PID PID_motor_front(&input_PID[FRONT], &output_PID[FRONT], &set_point_PID[FRONT], PID_Kp[FRONT], PID_Ki[FRONT], PID_Kd[FRONT], DIRECT);
+  PID PID_motor[2] = {PID(&input_PID[FRONT], &output_PID[FRONT], &set_point_PID[FRONT], PID_Kp[FRONT], PID_Ki[FRONT], PID_Kd[FRONT], DIRECT), PID(&input_PID[BACK], &output_PID[BACK], &set_point_PID[BACK], PID_Kp[BACK], PID_Ki[BACK], PID_Kd[BACK], DIRECT)};
   
 #endif
 // Sentido de giro del motor
@@ -106,10 +107,7 @@ double PID_Kd[2] = {0, 0};
 // This object uses PWM channel 0
 arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML7_PC24> pwm_motor_back;
 
-#if (USE_PID_MODE)
-  PID PID_motor_back(&input_PID[BACK], &output_PID_back, &set_point_PID_back, PID_Kp_back, PID_Ki_back, PID_Kd_back, DIRECT);
 
-#endif
 byte cantidad_sensores;
 byte cantidad_actuadores;
 
@@ -235,8 +233,8 @@ bool estimate_rotation_direction(uint motor){
 //*************************************************************************************
 void setup() {
   // Initialization of capture objects
-  capture_motor[FRONT].config(CAPTURE_TIME_WINDOW);
-  capture_motor[BACK].config(CAPTURE_TIME_WINDOW);
+  capture_motor_front.config(CAPTURE_TIME_WINDOW);
+  capture_motor_back.config(CAPTURE_TIME_WINDOW);
   // Put your setup code here, to run once:
   // Seteado a 10Khz para probar
   pwm_motor_front.start(PWM_PERIODO_US, 1000);
@@ -249,8 +247,8 @@ void setup() {
   pinMode(z_f_pin_motor[BACK], OUTPUT);
   //pinMode(signal_pin_motor_back, INPUT);
   pinMode(el_pin_motor[BACK], OUTPUT);
-  digitalWrite(z_f_pin_motor_front, LOW);
-  digitalWrite(z_f_pin_motor_back, LOW);
+  digitalWrite(z_f_pin_motor[FRONT], LOW);
+  digitalWrite(z_f_pin_motor[BACK], LOW);
 
   pinMode(pin_RST_RS485, OUTPUT);
   // desactiva el modo transmision en el conversor RS485
@@ -274,13 +272,13 @@ void setup() {
   Timer0.attachInterrupt(funcion_t1);
   #if (USE_PID_MODE)
     //turn the PID on
-    PID_motor_front.SetMode(AUTOMATIC);
+    PID_motor[FRONT].SetMode(AUTOMATIC);
     //turn the PID on
-    PID_motor_back.SetMode(AUTOMATIC);
-    PID_motor_front.SetSampleTime(10);// in ms
-    PID_motor_back.SetSampleTime(10);// in ms
-    PID_motor_front.SetOutputLimits(-1.0, 1.0);
-    PID_motor_back.SetOutputLimits(-1.0, 1.0);
+    PID_motor[BACK].SetMode(AUTOMATIC);
+    PID_motor[FRONT].SetSampleTime(10);// in ms
+    PID_motor[BACK].SetSampleTime(10);// in ms
+    PID_motor[FRONT].SetOutputLimits(-1.0, 1.0);
+    PID_motor[BACK].SetOutputLimits(-1.0, 1.0);
   #endif
   digitalWrite(el_pin_motor[FRONT], HIGH);
   digitalWrite(el_pin_motor[BACK], HIGH);
@@ -324,7 +322,7 @@ void loop() {
         PID_Ki[FRONT] = actuador[3];
         PID_Kd[FRONT] = actuador[4];
         #if (USE_PID_MODE)
-          PID_motor_front.SetTunings(PID_Kp[FRONT], PID_Ki[FRONT], PID_Kd[FRONT]);
+          PID_motor[FRONT].SetTunings(PID_Kp[FRONT], PID_Ki[FRONT], PID_Kd[FRONT]);
         #endif
       }
       signal_set_point[BACK] = actuador[5] / Kactuador;
@@ -334,7 +332,7 @@ void loop() {
         set_point_PID_cm[BACK] = set_point_PID_cm[BACK] > MAX_VEL_CM_S ? MAX_VEL_CM_S : set_point_PID_cm[BACK];
         set_point_PID_cm[BACK] = set_point_PID_cm[BACK] < -MAX_VEL_CM_S ? -MAX_VEL_CM_S : set_point_PID_cm[BACK];
 
-        set_point_PID_back = doubleMap(set_point_PID_cm[BACK], -MAX_VEL_CM_S, MAX_VEL_CM_S, -1.0, 1.0);
+        set_point_PID[BACK] = doubleMap(set_point_PID_cm[BACK], -MAX_VEL_CM_S, MAX_VEL_CM_S, -1.0, 1.0);
       }
       #if (DEBUG_MODE) 
         SerialUSB.print("el valor del actuador trasero con signo es : ");
@@ -347,17 +345,17 @@ void loop() {
         PID_Ki[BACK] = actuador[7];
         PID_Kd[BACK] = actuador[8];
         #if (USE_PID_MODE)
-          PID_motor_back.SetTunings(PID_Kp[BACK], PID_Ki[BACK], PID_Kd[BACK]);
+          PID_motor[BACK].SetTunings(PID_Kp[BACK], PID_Ki[BACK], PID_Kd[BACK]);
         #endif
       }
       estimate_rotation_direction(FRONT);
-      status_motor[FRONT] = capture_motor[FRONT].get_duty_period_and_pulses(duty_motor[FRONT], period_motor[FRONT], pulses_motor[FRONT]);
-      period_motor_us[FRONT] = (double)period_motor[FRONT] / (double)capture_motor[FRONT].ticks_per_usec();
+      status_motor[FRONT] = capture_motor_front.get_duty_period_and_pulses(duty_motor[FRONT], period_motor[FRONT], pulses_motor[FRONT]);
+      period_motor_us[FRONT] = (double)period_motor[FRONT] / (double)capture_motor_front.ticks_per_usec();
       //capture_motor_front.config(CAPTURE_TIME_WINDOW);
       input_PID_inter[FRONT] = ((double)distancia_periodo * (double)us_to_s)/ period_motor_us[FRONT];
       //input_PID_front = isinf(input_PID_front_inter) ? 0 : input_PID_front_inter;
       if isinf(input_PID_inter[FRONT]) {
-        input_PID_front_cm = 0.0;
+        input_PID_cm[FRONT] = 0.0;
         #if (DEBUG_MODE)
           SerialUSB.print("Input PID front es inf, el valor es : ");
           SerialUSB.println(input_PID_inter[FRONT], 8);
@@ -383,8 +381,8 @@ void loop() {
 
 
       estimate_rotation_direction(BACK);
-      status_motor[BACK] = capture_motor[BACK].get_duty_period_and_pulses(duty_motor[BACK], period_motor[BACK], pulses_motor[BACK]);
-      period_motor_us[BACK] = (double)period_motor[BACK] / (double)capture_motor[BACK].ticks_per_usec();
+      status_motor[BACK] = capture_motor_back.get_duty_period_and_pulses(duty_motor[BACK], period_motor[BACK], pulses_motor[BACK]);
+      period_motor_us[BACK] = (double)period_motor[BACK] / (double)capture_motor_back.ticks_per_usec();
       //capture_motor_back.config(CAPTURE_TIME_WINDOW);
       input_PID_inter[BACK] = ((double)distancia_periodo * (double)us_to_s)/ period_motor_us[BACK];
       //input_PID_back = isinf(input_PID_back_inter) ? 0 : input_PID_back_inter;
@@ -416,12 +414,12 @@ void loop() {
       
       #if (USE_PID_MODE) 
         // PID calculation and command
-        PID_motor_front.Compute();
+        PID_motor[FRONT].Compute();
 
         salida_pwm_motor[FRONT] = output_PID[FRONT] ;
         salida_pwm_motor_cm[FRONT] = MAX_VEL_CM_S * salida_pwm_motor[FRONT];
         
-        PID_motor_back.Compute();
+        PID_motor[BACK].Compute();
         
 
         salida_pwm_motor[BACK] = output_PID[BACK] ;
@@ -438,7 +436,7 @@ void loop() {
       salida_pwm_motor[FRONT] = salida_pwm_motor[FRONT] > 1.0 ? 1 : salida_pwm_motor[FRONT];
       salida_pwm_motor[FRONT] = salida_pwm_motor[FRONT] < -1.0 ? -1 : salida_pwm_motor[FRONT];
       sensor[3] = output_PID[FRONT];
-      if (salida_pwm_motoR[FRONT] > 0.001) {
+      if (salida_pwm_motor[FRONT] > 0.001) {
         digitalWrite(z_f_pin_motor[FRONT], forward_direction);
         output_motor_direction[FRONT] = FORWARD_ROTATION_STATE; 
       } else if (salida_pwm_motor[FRONT] < -0.001){ 
