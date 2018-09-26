@@ -30,6 +30,9 @@ void funcion_t1();
 int current_motor_direction[2] = { STOP_STATE, STOP_STATE};
 int output_motor_direction[2] = { STOP_STATE, STOP_STATE};
 
+int last_motor_input_update_rate[2] = {0, 0};
+int last_motor_input[2] = {0, 0};
+
 #define CORRECT_ROTATION 0
 #define BRAKE_ROTATION 1
 #define CONFIRM_ROTATION_CHANGE 2
@@ -198,12 +201,7 @@ bool estimate_rotation_direction(uint motor){
     motor_state = STOP_STATE;
   } else {
     motor_state = ROTATION_STATE;
-  }
-  SerialUSB.print("[estimate rotation ] motor state, el valor es : ");
-  SerialUSB.println(motor_state, 8);
-  
-  SerialUSB.print("[estimate rotation ] input_pid, el valor es : ");
-  SerialUSB.println(input_PID[motor], 8);  
+  }  
   switch(state_of_rotation[motor]) {
     case CORRECT_ROTATION:
       if (output_motor_direction[motor] != current_motor_direction[motor]) {
@@ -215,6 +213,9 @@ bool estimate_rotation_direction(uint motor){
         current_motor_direction[motor] = STOP_STATE;
         state_of_rotation[motor] = CONFIRM_ROTATION_CHANGE;
       }
+      if (last_motor_input[motor] < (fabs(input_PID[motor]) - 0.025 * MAX_VEL_CM_S) ) {
+        state_of_rotation[motor] = CONFIRM_ROTATION_CHANGE;
+      } 
       break;
     case CONFIRM_ROTATION_CHANGE:
       if (motor_state == ROTATION_STATE) {
@@ -225,6 +226,12 @@ bool estimate_rotation_direction(uint motor){
     default:
       state_of_rotation[motor] = CORRECT_ROTATION;
       break;
+  }
+  if (last_motor_input_update_rate[motor] >= 10) {
+    last_motor_input[motor] = fabs(input_PID[motor]);
+    last_motor_input_update_rate[motor] = 0;
+  } else {
+      last_motor_input_update_rate[motor]++;
   }
 }
 
