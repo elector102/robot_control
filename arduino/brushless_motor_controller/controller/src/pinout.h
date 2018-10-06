@@ -22,4 +22,11 @@ auto& capture_motor_back = capture_tc6;
 // This object uses PWM channel 0
 arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML7_PC24> pwm_motor_back;
 
+
+// motor brake
+// analog pin 10
+arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML3_PB19> pwm_motor_brake_front;
+// analog pin 9
+arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML2_PB18> pwm_motor_brake_back;
+
 int pin_RST_RS485 = 10;

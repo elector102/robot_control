@@ -154,7 +154,29 @@ void serialEvent3() {
     }
   }
 }//--END serialEvent()-------------- -------------------------
+uint motor_status[2] = {STOP_STATE, STOP_STATE};
 
+void stopMotor(int motor) {
+  if (motor_status != STOP_STATE) {
+    digitalWrite(el_pin_motor[motor], LOW);
+    delay(1);
+    if (motor == FRONT) {
+      pwm_motor_brake_front.set_duty(0);
+    } else {
+      pwm_motor_brake_back.set_duty(0);
+    }
+  }
+}
+
+void runMotor(int motor) {
+  if (motor == FRONT) {
+    pwm_motor_brake_front.set_duty(PWM_PERIODO_US);
+  } else {
+    pwm_motor_brake_back.set_duty(PWM_PERIODO_US);
+  }
+  delay(1);
+  digitalWrite(el_pin_motor[motor], HIGH);
+}
 
 
 bool estimateRotationDirection(const uint motor, const int output_motor_direction){
@@ -171,15 +193,17 @@ bool estimateRotationDirection(const uint motor, const int output_motor_directio
       }
       break;
     case BRAKE_ROTATION:
+      stopMotor(motor);
       if ( motor_state == STOP_STATE) {
         current_motor_direction[motor] = STOP_STATE;
         state_of_rotation[motor] = CONFIRM_ROTATION_CHANGE;
       }
-      if (last_motor_input[motor] < (fabs(input_PID[motor]) - 0.025 * MAX_VEL_CM_S) ) {
-        state_of_rotation[motor] = CONFIRM_ROTATION_CHANGE;
-      } 
+      //if (last_motor_input[motor] < (fabs(input_PID[motor]) - 0.025 * MAX_VEL_CM_S) ) {
+      //  state_of_rotation[motor] = CONFIRM_ROTATION_CHANGE;
+      //} 
       break;
     case CONFIRM_ROTATION_CHANGE:
+      runMotor(motor);
       if (motor_state == ROTATION_STATE) {
         current_motor_direction[motor] = output_motor_direction;
         state_of_rotation[motor] = CORRECT_ROTATION;  
@@ -203,14 +227,22 @@ void initializeMotor(int motor) {
     capture_motor_front.config(CAPTURE_TIME_WINDOW);
     pwm_motor_front.start(PWM_PERIODO_US, 1000);
     pwm_motor_front.set_duty(PWM_PERIODO_US_MIN);
+
+    // brake
+    pwm_motor_brake_front.start(PWM_PERIODO_US, PWM_PERIODO_US);
+    pwm_motor_brake_front.set_duty(PWM_PERIODO_US);
   } else {  
     // Initialization of capture objects
     capture_motor_back.config(CAPTURE_TIME_WINDOW);
     pwm_motor_back.start(PWM_PERIODO_US, 1000);
     pwm_motor_back.set_duty(PWM_PERIODO_US_MIN);
+    // brake
+    pwm_motor_brake_back.start(PWM_PERIODO_US, PWM_PERIODO_US);
+    pwm_motor_brake_back.set_duty(PWM_PERIODO_US);
   }
   pinMode(z_f_pin_motor[motor], OUTPUT);
   pinMode(el_pin_motor[motor], OUTPUT);
+  stopMotor(motor);
 
   digitalWrite(z_f_pin_motor[motor], LOW);
 
@@ -363,15 +395,14 @@ void loop() {
       // Incluir Aqui codigo de parada
       pwm_motor_front.set_duty(PWM_PERIODO_US_MIN);
       pwm_motor_back.set_duty(PWM_PERIODO_US_MIN);
-      digitalWrite(el_pin_motor[FRONT], LOW);
-      digitalWrite(el_pin_motor[BACK], LOW);
+      stopMotor(FRONT);
+      stopMotor(BACK);
       PID_motor[FRONT].SetTunings(actuador[2], actuador[3], actuador[4]);
       PID_motor[BACK].SetTunings(actuador[6], actuador[7], actuador[8]);
 
     } else if (modo == 1) {
-
-      digitalWrite(el_pin_motor[FRONT], HIGH);
-      digitalWrite(el_pin_motor[BACK], HIGH);
+      runMotor(FRONT);
+      runMotor(BACK);
       // Ejemplo: espejo en dato[0]
       digitalWrite(EVENT_CONTROL_DEBUG_PIN, HIGH);
 
