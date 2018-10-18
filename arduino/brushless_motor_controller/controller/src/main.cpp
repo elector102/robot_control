@@ -23,7 +23,7 @@ void funcion_t1();
   byte IDslave = 2;
 #endif
 
-#define STOP_STATE (float)0.0
+#define STOP_STATE 0
 #define FORWARD_ROTATION_STATE (float)1.0
 #define BACKWARD_ROTATION_STATE (float)-1.0
 #define ROTATION_STATE (float)2.0
