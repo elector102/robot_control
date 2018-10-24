@@ -4,10 +4,13 @@
 #include "tc_lib.h"
 #include <PID_v1.h>
 #include <pinout.h>
+#include <MCP3208.h>
+#include <SPI.h>
+
 
 void funcion_t1();
-#define LEFT 1
 #define RIGHT 0
+#define LEFT 1
 #define BOARD_SIDE LEFT
 
 #define FRONT 0
@@ -24,9 +27,9 @@ void funcion_t1();
 #endif
 
 #define STOP_STATE 0
-#define FORWARD_ROTATION_STATE (float)1.0
-#define BACKWARD_ROTATION_STATE (float)-1.0
-#define ROTATION_STATE (float)2.0
+#define FORWARD_ROTATION_STATE 1
+#define BACKWARD_ROTATION_STATE -1
+#define ROTATION_STATE 2
 
 int current_motor_direction[2] = { STOP_STATE, STOP_STATE};
 int output_motor_direction[2] = { STOP_STATE, STOP_STATE};
@@ -43,6 +46,13 @@ int state_of_rotation[2] = { STOP_STATE, STOP_STATE};
 #define PWM_PERIODO_US_MIN 0
 #define DEBUG_MODE false
 #define USE_PID_MODE true
+#define USE_CURRENT_SENSOR false
+
+#if USE_CURRENT_SENSOR
+  MCP3208 adc(PIN_SPI_CS2);
+#endif
+
+bool first_time = true;
 // Diametro de la rueda en cm. cm = 2.54 * pulgadas
 #define DIAMETRO_CM 24.13 // 9.5 pulgadas
 // cantidad de periodos que se tienen por vuelta del motor
@@ -77,7 +87,7 @@ byte cantidad_sensores;
 byte cantidad_actuadores;
 
 // BUFFERS
-unsigned int envio[50];
+unsigned int envio[100];
 // Buffer temporal de lectura. No usar
 byte inData[50];
 // Buffer final de lectura.Datos crudos.
@@ -154,40 +164,43 @@ void serialEvent3() {
     }
   }
 }//--END serialEvent()-------------- -------------------------
-uint motor_status[2] = {STOP_STATE, STOP_STATE};
+int motor_status[2] = {STOP_STATE, STOP_STATE};
 
 void stopMotor(int motor) {
   if (motor_status != STOP_STATE) {
     digitalWrite(el_pin_motor[motor], LOW);
-    delay(1);
-    if (motor == FRONT) {
-      pwm_motor_brake_front.set_duty(0);
-    } else {
-      pwm_motor_brake_back.set_duty(0);
-    }
+    //delay(1);
+    digitalWrite(PIN_BRAKE[motor], HIGH);
+//    if (motor == FRONT) {
+//      pwm_motor_brake_front.set_duty(0);
+//    } else {
+//      pwm_motor_brake_back.set_duty(0);
+//    }
   }
 }
 
 void runMotor(int motor) {
-  if (motor == FRONT) {
-    pwm_motor_brake_front.set_duty(PWM_PERIODO_US);
-  } else {
-    pwm_motor_brake_back.set_duty(PWM_PERIODO_US);
-  }
-  delay(1);
+//  if (motor == FRONT) {
+//    pwm_motor_brake_front.set_duty(PWM_PERIODO_US);
+//  } else {
+//    pwm_motor_brake_back.set_duty(PWM_PERIODO_US);
+//  }
+  digitalWrite(PIN_BRAKE[motor], LOW);
+  //delay(1);
   digitalWrite(el_pin_motor[motor], HIGH);
 }
 
 
 bool estimateRotationDirection(const uint motor, const int output_motor_direction){
-  uint motor_state = 0;
-  if (fabs(input_PID[motor]) < 0.001) {
+  int motor_state = 0;
+  if (fabs(input_PID[motor]) < 0.01) {
     motor_state = STOP_STATE;
   } else {
     motor_state = ROTATION_STATE;
   }  
   switch(state_of_rotation[motor]) {
     case CORRECT_ROTATION:
+      runMotor(motor);
       if (output_motor_direction != current_motor_direction[motor]) {
         state_of_rotation[motor] = BRAKE_ROTATION;
       }
@@ -220,8 +233,18 @@ bool estimateRotationDirection(const uint motor, const int output_motor_directio
     last_motor_input_update_rate[motor]++;
   }
 }
+#if USE_CURRENT_SENSOR
+  bool estimateRotationDirectionWithCurrentSensor(const uint motor, const int output_motor_direction) {
 
+  }
+#endif
 void initializeMotor(int motor) {
+  pinMode(PIN_POWER_ENABLE[motor], OUTPUT);
+  pinMode(PIN_BRAKE[motor], OUTPUT);
+  // brake motor
+  digitalWrite(PIN_BRAKE[motor], LOW);
+  // turno off brushless driver
+  digitalWrite(PIN_POWER_ENABLE[motor], HIGH);
   if (motor == FRONT) {
     // Initialization of capture objects
     capture_motor_front.config(CAPTURE_TIME_WINDOW);
@@ -246,7 +269,7 @@ void initializeMotor(int motor) {
 
   digitalWrite(z_f_pin_motor[motor], LOW);
 
-  
+
   #if (USE_PID_MODE)
     //turn the PID on
     PID_motor[motor].SetMode(AUTOMATIC);
@@ -254,10 +277,28 @@ void initializeMotor(int motor) {
     PID_motor[motor].SetOutputLimits(-1.0, 1.0);
   #endif  
 }
+
+void initializeBrushlessDriver(int motor) {
+  digitalWrite(PIN_POWER_ENABLE[motor], HIGH);
+  stopMotor(motor);
+  //delay(200);
+  digitalWrite(el_pin_motor[motor], HIGH);
+
+  // Init brushless driver
+  delay(50);
+  digitalWrite(PIN_POWER_ENABLE[motor], LOW);
+  delay(100);
+  stopMotor(motor);
+  
+
+}
 //*************************************************************************************
 //********* XXX  INITIALIZATION AND SETUP DE LOS PINOS Y CONTROLADOR XXX  *************
 //*************************************************************************************
 void setup() {
+  #if USE_CURRENT_SENSOR
+    adc.begin();
+  #endif
   initializeMotor(FRONT);
   initializeMotor(BACK);
 
@@ -340,10 +381,10 @@ double updateMotorSpeed(const int motor) {
 
 int setMotorDirection(const int motor, const double velocity) {
   int output_motor_direction;
-  if (velocity > 0.001) {
+  if (velocity > 0.01) {
     digitalWrite(z_f_pin_motor[motor], forward_direction);
     output_motor_direction = FORWARD_ROTATION_STATE; 
-  } else if (velocity < -0.001){ 
+  } else if (velocity < -0.01){ 
     digitalWrite(z_f_pin_motor[motor], backward_direction);
     output_motor_direction = BACKWARD_ROTATION_STATE;
   } else {
@@ -380,6 +421,14 @@ double setMotorSpeedAndDirection(const int motor) {
 
   return salida_motor;
 } 
+#if USE_CURRENT_SENSOR
+  void readCurrentSensor (int motor, int *current_sensor) {
+    int sensor_group = 2*(motor + 1 ) + motor;
+    for (int i = 0; i < 3; i++) {
+      current_sensor[i] = adc.analogRead(sensor_group + i);
+    }
+  }
+#endif
 
 //*************************************************************************************
 //***************************** XXX  MAIN  XXX  ***************************************
@@ -401,8 +450,14 @@ void loop() {
       PID_motor[BACK].SetTunings(actuador[6], actuador[7], actuador[8]);
 
     } else if (modo == 1) {
-      runMotor(FRONT);
-      runMotor(BACK);
+
+      if (first_time == true) {
+        initializeBrushlessDriver(FRONT);
+        initializeBrushlessDriver(BACK);
+        first_time = false;
+      }
+      //runMotor(FRONT);
+      //runMotor(BACK);
       // Ejemplo: espejo en dato[0]
       digitalWrite(EVENT_CONTROL_DEBUG_PIN, HIGH);
 
@@ -424,10 +479,35 @@ void loop() {
       
       sensor[3] = setMotorSpeedAndDirection(FRONT);
       sensor[4] = setMotorSpeedAndDirection(BACK);
+      #if USE_CURRENT_SENSOR
+        int current_sensor[3];
+        readCurrentSensor(FRONT, current_sensor);
+        sensor[7] = current_sensor[0];
+        sensor[8] = current_sensor[1];
+        sensor[9] = current_sensor[2];
+        #if DEBUG_MODE
+          SerialUSB.println("current sensor value of front motor is :");
+          SerialUSB.println(current_sensor[0]);
+          SerialUSB.println(current_sensor[1]);
+          SerialUSB.println(current_sensor[2]);
+        #endif
+        readCurrentSensor(BACK, current_sensor);
+        sensor[10] = current_sensor[0];
+        sensor[11] = current_sensor[1];
+        sensor[12] = current_sensor[2];
+        #if DEBUG_MODE
+          SerialUSB.println("current sensor value of back motor is :");
+          SerialUSB.println(current_sensor[0]);
+          SerialUSB.println(current_sensor[1]);
+          SerialUSB.println(current_sensor[2]);
+        #endif
+      #endif
             
       digitalWrite(EVENT_CONTROL_DEBUG_PIN, LOW);
     } 
     evento_control = 0;
+
+    
   }
   // Cada xxx ms ejecuta este codigo
   if (evento_tarea_1 == 1) {      

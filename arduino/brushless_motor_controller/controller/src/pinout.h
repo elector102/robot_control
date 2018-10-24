@@ -30,3 +30,9 @@ arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML3_PB19> pwm_motor_b
 arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML2_PB18> pwm_motor_brake_back;
 
 int pin_RST_RS485 = 10;
+
+int PIN_SPI_CS2 = 52;
+
+int PIN_POWER_ENABLE[2] = {39, 51};
+
+int PIN_BRAKE[2] = {41, 53};
