@@ -9,6 +9,8 @@
 
 
 void funcion_t1();
+void detectionSerialData();
+void sendSerialData();
 #define RIGHT 0
 #define LEFT 1
 #define BOARD_SIDE LEFT
@@ -67,7 +69,6 @@ float cm_por_periodo = distancia_periodo;
 
 #define MAX_VEL_CM_S 800.0
 
-
 #define CAPTURE_TIME_WINDOW 400000 // usecs
 
 double last_set_point_PID[2] = {0, 0};
@@ -114,69 +115,19 @@ byte estado_debug = 0;
 
 int comunication_control_count = 0;
 
-
-
 double doubleMap(double x, double in_min, double in_max, double out_min, double out_max) {
   double temp = (x - in_min)*(out_max - out_min)/(in_max - in_min) + out_min;
   return temp;
 }
-//*************************************************************************************
-//********** SERVICIO DE INTERRUPCION  ISR(SERIAL_RX)   *********************
-//*************************************************************************************
-void serialEvent3() {
-  // Lee un byte
-  inData[i] = Serial3.read();
-  // Separacion de datos recibidos
-  if (encabezado < 3) {
-    // Detección de cabecera
-    if (inData[i] == 255) {
-      encabezado = encabezado + 1;
-    } else {
-      // No detecta encabezado
-      if((encabezado == 2) && (inData[i] == IDslave )) {
-        encabezado = encabezado + 1;
-      } else {        
-        i = 0;
-        encabezado = 0;
-      }
-    }
-  } else {//SI detecta cabecera encabezado=2,i=1 
-    i = i + 1; 
-    if (i <= 3) {
-      if (i == 1)
-        modo = inData[0];
-      if (i == 2)
-        cantidad_actuadores = inData[1];
-      if (i == 3)
-        cantidad_sensores = inData[2];
-    } else {
-      if (i >= (4 + 2 * cantidad_actuadores)) {
-        if (inData[3 + 2 * cantidad_actuadores] == 0) {
-          for (k = 0; k < (2 * cantidad_actuadores + 3); k++)
-            inData1[k] = inData[k];
-          // Indico nuevo dato
-          evento_rx = 1;   
-        }
-        // Reinicio de deteccion de encabezado de trama
-        i = 0;
-        encabezado = 0;
-      }
-    }
-  }
-}//--END serialEvent()-------------- -------------------------
-int motor_status[2] = {STOP_STATE, STOP_STATE};
 
 void stopMotor(int motor) {
-  if (motor_status != STOP_STATE) {
     digitalWrite(el_pin_motor[motor], LOW);
-    //delay(1);
     digitalWrite(PIN_BRAKE[motor], HIGH);
 //    if (motor == FRONT) {
 //      pwm_motor_brake_front.set_duty(0);
 //    } else {
 //      pwm_motor_brake_back.set_duty(0);
 //    }
-  }
 }
 
 void runMotor(int motor) {
@@ -186,7 +137,6 @@ void runMotor(int motor) {
 //    pwm_motor_brake_back.set_duty(PWM_PERIODO_US);
 //  }
   digitalWrite(PIN_BRAKE[motor], LOW);
-  //delay(1);
   digitalWrite(el_pin_motor[motor], HIGH);
 }
 
@@ -444,30 +394,30 @@ void loop() {
       modo = 0;
     }
     
-    updateSetPoint(FRONT, actuador[1]);
-    updateSetPoint(BACK, actuador[5]);
-    sensor[5] = set_point_PID[FRONT];
-    sensor[6] = set_point_PID[BACK];
+    updateSetPoint(FRONT, actuador[3]);
+    updateSetPoint(BACK, actuador[4]);
+    sensor[4] = set_point_PID[FRONT];
+    sensor[5] = set_point_PID[BACK];
 
     estimateRotationDirection(FRONT, output_motor_direction[FRONT]);
     input_PID[FRONT] = updateMotorSpeed(FRONT);
-    sensor[1] = input_PID[FRONT];
+    sensor[0] = input_PID[FRONT];
 
     estimateRotationDirection(BACK, output_motor_direction[BACK]);
     input_PID[BACK] = updateMotorSpeed(BACK);
-    sensor[2] = input_PID[BACK];
+    sensor[1] = input_PID[BACK];
 
     #if USE_CURRENT_SENSOR
       int current_sensor[3];
       readCurrentSensor(FRONT, current_sensor);
-      sensor[7] = current_sensor[0];
-      sensor[8] = current_sensor[1];
-      sensor[9] = current_sensor[2];
+      sensor[6] = current_sensor[0];
+      sensor[7] = current_sensor[1];
+      sensor[8] = current_sensor[2];
 
       readCurrentSensor(BACK, current_sensor);
-      sensor[10] = current_sensor[0];
-      sensor[11] = current_sensor[1];
-      sensor[12] = current_sensor[2];
+      sensor[9] = current_sensor[0];
+      sensor[10] = current_sensor[1];
+      sensor[11] = current_sensor[2];
     #endif
     // MODO = 0 --> STOP
     if (modo == 0) {
@@ -476,8 +426,8 @@ void loop() {
       pwm_motor_back.set_duty(PWM_PERIODO_US_MIN);
       stopMotor(FRONT);
       stopMotor(BACK);
-      PID_motor[FRONT].SetTunings(actuador[2], actuador[3], actuador[4]);
-      PID_motor[BACK].SetTunings(actuador[6], actuador[7], actuador[8]);
+      PID_motor[FRONT].SetTunings(actuador[0], actuador[1], actuador[2]);
+      PID_motor[BACK].SetTunings(actuador[0], actuador[1], actuador[2]);
 
     } else if (modo == 1) {
 
@@ -488,11 +438,9 @@ void loop() {
       }
       
       digitalWrite(EVENT_CONTROL_DEBUG_PIN, HIGH);
-      // Ejemplo: espejo en dato[0]
-      sensor[0] = actuador[0]; 
 
-      sensor[3] = setMotorSpeedAndDirection(FRONT);
-      sensor[4] = setMotorSpeedAndDirection(BACK);
+      sensor[2] = setMotorSpeedAndDirection(FRONT);
+      sensor[3] = setMotorSpeedAndDirection(BACK);
 
       digitalWrite(EVENT_CONTROL_DEBUG_PIN, LOW);
     } 
@@ -506,22 +454,7 @@ void loop() {
   //*************** EVENTO DETECCION DE TRAMA   *************************************
   //*************************************************************************************
   if (evento_rx == 1) {
-    // Recibe modo
-    modo = inData1[0];  
-    // Recibe cantidad de actuadores
-    cantidad_actuadores = inData1[1];
-    // Recibe cantidad de sensores
-    cantidad_sensores = inData1[2];
-    for (k = 0; k < cantidad_actuadores; k++) {
-      // Arma dato de 15 bits de magnitud
-      
-      actuador[k] = ((float)256.00 * (0x7F & inData1[2 * k + 4]) + inData1[2 * k + 3]); 
-      // Signo en bit 16
-      if ((inData1[2 * k + 4] & 0x80) > 0) {
-        actuador[k] = actuador[k] * (-1.0);
-      }
-      actuador[k] = Kactuador * actuador[k];
-    }
+    detectionSerialData();
     // Reset de bandera RX trama
     evento_rx = 0;
     // Activa bandera de TX
@@ -542,7 +475,32 @@ void loop() {
       estado_debug = 1;
     }
     comunication_control_count = 0;
-    // DEBUG
+    sendSerialData();
+    // desactiva el modo transmision en el conversor RS485
+    digitalWrite(pin_RST_RS485, LOW);
+  }
+}//----------------   FIM MAIN ---------------------------------
+
+void detectionSerialData() {
+  // Recibe modo
+  modo = inData1[0];  
+  // Recibe cantidad de actuadores
+  cantidad_actuadores = inData1[1];
+  // Recibe cantidad de sensores
+  cantidad_sensores = inData1[2];
+  for (k = 0; k < cantidad_actuadores; k++) {
+    // Arma dato de 15 bits de magnitud
+    actuador[k] = ((float)256.00 * (0x7F & inData1[2 * k + 4]) + inData1[2 * k + 3]); 
+    // Signo en bit 16
+    if ((inData1[2 * k + 4] & 0x80) > 0) {
+      actuador[k] = actuador[k] * (-1.0);
+    }
+    actuador[k] = Kactuador * actuador[k];
+  }
+}
+
+void sendSerialData(){
+// DEBUG
     //sensor[0] = sensor[0] + 1.0;
     // Envia cabecera FF FF
     Serial3.write(0xFF);    
@@ -566,11 +524,55 @@ void loop() {
     // Fin trama
     Serial3.write((byte)0);       
     evento_tx = 0;
-    // desactiva el modo transmision en el conversor RS485
+    
     Serial3.flush();
-    digitalWrite(pin_RST_RS485, LOW);
+}
+
+
+//*************************************************************************************
+//********** SERVICIO DE INTERRUPCION  ISR(SERIAL_RX)   *********************
+//*************************************************************************************
+void serialEvent3() {
+  // Lee un byte
+  inData[i] = Serial3.read();
+  // Separacion de datos recibidos
+  if (encabezado < 3) {
+    // Detección de cabecera
+    if (inData[i] == 255) {
+      encabezado = encabezado + 1;
+    } else {
+      // No detecta encabezado
+      if((encabezado == 2) && (inData[i] == IDslave )) {
+        encabezado = encabezado + 1;
+      } else {        
+        i = 0;
+        encabezado = 0;
+      }
+    }
+  } else {//SI detecta cabecera encabezado=2,i=1 
+    i = i + 1; 
+    if (i <= 3) {
+      if (i == 1)
+        modo = inData[0];
+      if (i == 2)
+        cantidad_actuadores = inData[1];
+      if (i == 3)
+        cantidad_sensores = inData[2];
+    } else {
+      if (i >= (4 + 2 * cantidad_actuadores)) {
+        if (inData[3 + 2 * cantidad_actuadores] == 0) {
+          for (k = 0; k < (2 * cantidad_actuadores + 3); k++)
+            inData1[k] = inData[k];
+          // Indico nuevo dato
+          evento_rx = 1;   
+        }
+        // Reinicio de deteccion de encabezado de trama
+        i = 0;
+        encabezado = 0;
+      }
+    }
   }
-}//----------------   FIM MAIN ---------------------------------
+}//--END serialEvent()-------------- -------------------------
 
 //*************************************************************************************
 //****************** XXX  INTERRUPCION TIMER DE 10 ms  XXX  *****************************
