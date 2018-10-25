@@ -281,13 +281,11 @@ void initializeMotor(int motor) {
 void initializeBrushlessDriver(int motor) {
   digitalWrite(PIN_POWER_ENABLE[motor], HIGH);
   stopMotor(motor);
-  //delay(200);
   digitalWrite(el_pin_motor[motor], HIGH);
 
   // Init brushless driver
-  delay(50);
   digitalWrite(PIN_POWER_ENABLE[motor], LOW);
-  delay(100);
+  delay(1);
   stopMotor(motor);
   
 
@@ -341,7 +339,6 @@ void updateSetPoint(const int motor, const float set_point_value) {
     #endif
 }
 
-
 double updateMotorSpeed(const int motor) {
   double input_PID_inter, input_PID;
   uint32_t status_motor, duty_motor, period_motor, pulses_motor;
@@ -349,13 +346,13 @@ double updateMotorSpeed(const int motor) {
 
   if (motor == FRONT) {
     status_motor = capture_motor_front.get_duty_period_and_pulses(duty_motor, period_motor, pulses_motor);
-    period_motor_us = (double)period_motor / (double)capture_motor_front.ticks_per_usec();
+    period_motor_us = period_motor / capture_motor_front.ticks_per_usec();
   } else if (motor == BACK) {
     status_motor = capture_motor_back.get_duty_period_and_pulses(duty_motor, period_motor, pulses_motor);
-    period_motor_us = (double)period_motor / (double)capture_motor_back.ticks_per_usec();
+    period_motor_us = period_motor / capture_motor_back.ticks_per_usec();
   }
 
-  input_PID_inter = ((double)distancia_periodo * (double)us_to_s)/ period_motor_us;
+  input_PID_inter = (distancia_periodo * us_to_s)/ period_motor_us;
 
   if isinf(input_PID_inter) {
     input_PID_inter = 0.0;
@@ -363,7 +360,7 @@ double updateMotorSpeed(const int motor) {
     if (current_motor_direction[motor] == STOP_STATE) {
       input_PID_inter = input_PID_inter * output_motor_direction[motor];
     } else {
-      input_PID_inter = input_PID_inter * (double)current_motor_direction[motor];
+      input_PID_inter = input_PID_inter * current_motor_direction[motor];
     }
   }
   input_PID_inter = input_PID_inter > MAX_VEL_CM_S ? MAX_VEL_CM_S : input_PID_inter;
@@ -427,6 +424,13 @@ double setMotorSpeedAndDirection(const int motor) {
     for (int i = 0; i < 3; i++) {
       current_sensor[i] = adc.analogRead(sensor_group + i);
     }
+    #if DEBUG_MODE
+      SerialUSB.print("current sensor value of motor ");
+      SerialUSB.println(motor);
+      SerialUSB.println(current_sensor[0]);
+      SerialUSB.println(current_sensor[1]);
+      SerialUSB.println(current_sensor[2]);
+    #endif
   }
 #endif
 
@@ -439,6 +443,32 @@ void loop() {
     if (comunication_control_count >= 10) {
       modo = 0;
     }
+    
+    updateSetPoint(FRONT, actuador[1]);
+    updateSetPoint(BACK, actuador[5]);
+    sensor[5] = set_point_PID[FRONT];
+    sensor[6] = set_point_PID[BACK];
+
+    estimateRotationDirection(FRONT, output_motor_direction[FRONT]);
+    input_PID[FRONT] = updateMotorSpeed(FRONT);
+    sensor[1] = input_PID[FRONT];
+
+    estimateRotationDirection(BACK, output_motor_direction[BACK]);
+    input_PID[BACK] = updateMotorSpeed(BACK);
+    sensor[2] = input_PID[BACK];
+
+    #if USE_CURRENT_SENSOR
+      int current_sensor[3];
+      readCurrentSensor(FRONT, current_sensor);
+      sensor[7] = current_sensor[0];
+      sensor[8] = current_sensor[1];
+      sensor[9] = current_sensor[2];
+
+      readCurrentSensor(BACK, current_sensor);
+      sensor[10] = current_sensor[0];
+      sensor[11] = current_sensor[1];
+      sensor[12] = current_sensor[2];
+    #endif
     // MODO = 0 --> STOP
     if (modo == 0) {
       // Incluir Aqui codigo de parada
@@ -456,58 +486,17 @@ void loop() {
         initializeBrushlessDriver(BACK);
         first_time = false;
       }
-      //runMotor(FRONT);
-      //runMotor(BACK);
-      // Ejemplo: espejo en dato[0]
+      
       digitalWrite(EVENT_CONTROL_DEBUG_PIN, HIGH);
-
+      // Ejemplo: espejo en dato[0]
       sensor[0] = actuador[0]; 
 
-      updateSetPoint(FRONT, actuador[1]);
-      updateSetPoint(BACK, actuador[5]);
-      sensor[5] = set_point_PID[FRONT];
-      sensor[6] = set_point_PID[BACK];
-      
-      estimateRotationDirection(FRONT, output_motor_direction[FRONT]);
-      input_PID[FRONT] = updateMotorSpeed(FRONT);
-      sensor[1] = input_PID[FRONT];
-
-
-      estimateRotationDirection(BACK, output_motor_direction[BACK]);
-      input_PID[BACK] = updateMotorSpeed(BACK);
-      sensor[2] = input_PID[BACK];
-      
       sensor[3] = setMotorSpeedAndDirection(FRONT);
       sensor[4] = setMotorSpeedAndDirection(BACK);
-      #if USE_CURRENT_SENSOR
-        int current_sensor[3];
-        readCurrentSensor(FRONT, current_sensor);
-        sensor[7] = current_sensor[0];
-        sensor[8] = current_sensor[1];
-        sensor[9] = current_sensor[2];
-        #if DEBUG_MODE
-          SerialUSB.println("current sensor value of front motor is :");
-          SerialUSB.println(current_sensor[0]);
-          SerialUSB.println(current_sensor[1]);
-          SerialUSB.println(current_sensor[2]);
-        #endif
-        readCurrentSensor(BACK, current_sensor);
-        sensor[10] = current_sensor[0];
-        sensor[11] = current_sensor[1];
-        sensor[12] = current_sensor[2];
-        #if DEBUG_MODE
-          SerialUSB.println("current sensor value of back motor is :");
-          SerialUSB.println(current_sensor[0]);
-          SerialUSB.println(current_sensor[1]);
-          SerialUSB.println(current_sensor[2]);
-        #endif
-      #endif
-            
+
       digitalWrite(EVENT_CONTROL_DEBUG_PIN, LOW);
     } 
     evento_control = 0;
-
-    
   }
   // Cada xxx ms ejecuta este codigo
   if (evento_tarea_1 == 1) {      
@@ -578,7 +567,6 @@ void loop() {
     Serial3.write((byte)0);       
     evento_tx = 0;
     // desactiva el modo transmision en el conversor RS485
-    //delayMicroseconds(350);
     Serial3.flush();
     digitalWrite(pin_RST_RS485, LOW);
   }
