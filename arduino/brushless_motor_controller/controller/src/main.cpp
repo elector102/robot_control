@@ -235,7 +235,7 @@ void initializeBrushlessDriver(int motor) {
 
   // Init brushless driver
   digitalWrite(PIN_POWER_ENABLE[motor], LOW);
-  delay(1);
+  delay(2);
   stopMotor(motor);
   
 
@@ -336,6 +336,7 @@ int setMotorDirection(const int motor, const double velocity) {
     output_motor_direction = BACKWARD_ROTATION_STATE;
   } else {
     output_motor_direction = STOP_STATE;
+    stopMotor(motor);
   }
   return output_motor_direction;
 }
@@ -396,8 +397,6 @@ void loop() {
     
     updateSetPoint(FRONT, actuador[3]);
     updateSetPoint(BACK, actuador[4]);
-    sensor[4] = set_point_PID[FRONT];
-    sensor[5] = set_point_PID[BACK];
 
     estimateRotationDirection(FRONT, output_motor_direction[FRONT]);
     input_PID[FRONT] = updateMotorSpeed(FRONT);
@@ -410,14 +409,14 @@ void loop() {
     #if USE_CURRENT_SENSOR
       int current_sensor[3];
       readCurrentSensor(FRONT, current_sensor);
-      sensor[6] = current_sensor[0];
-      sensor[7] = current_sensor[1];
-      sensor[8] = current_sensor[2];
+      sensor[4] = current_sensor[0];
+      sensor[5] = current_sensor[1];
+      sensor[6] = current_sensor[2];
 
       readCurrentSensor(BACK, current_sensor);
-      sensor[9] = current_sensor[0];
-      sensor[10] = current_sensor[1];
-      sensor[11] = current_sensor[2];
+      sensor[7] = current_sensor[0];
+      sensor[8] = current_sensor[1];
+      sensor[9] = current_sensor[2];
     #endif
     // MODO = 0 --> STOP
     if (modo == 0) {
@@ -527,7 +526,6 @@ void sendSerialData(){
     
     Serial3.flush();
 }
-
 
 //*************************************************************************************
 //********** SERVICIO DE INTERRUPCION  ISR(SERIAL_RX)   *********************
