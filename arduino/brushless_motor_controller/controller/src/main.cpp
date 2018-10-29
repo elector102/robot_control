@@ -11,6 +11,18 @@
 void funcion_t1();
 void detectionSerialData();
 void sendSerialData();
+double setMotorSpeedAndDirection(const int motor);
+int setMotorDirection(const int motor, const double velocity);
+double updateMotorSpeed(const int motor);
+void updateSetPoint(const int motor, const float set_point_value);
+void initializeBrushlessDriver(int motor);
+void initializeMotor(int motor);
+bool estimateRotationDirection(const uint motor, const int output_motor_direction);
+double averageFilter(uint motor, double new_value, int order);
+void runMotor(int motor);
+void stopMotor(int motor);
+double doubleMap(double x, double in_min, double in_max, double out_min, double out_max);
+
 #define RIGHT 0
 #define LEFT 1
 #define BOARD_SIDE LEFT
@@ -67,7 +79,7 @@ float us_to_s = 1000000;
 float cm_to_m = 1;
 float cm_por_periodo = distancia_periodo;
 
-#define MAX_VEL_CM_S 800.0
+#define MAX_VEL_CM_S 1000.0
 
 #define CAPTURE_TIME_WINDOW 400000 // usecs
 
@@ -115,6 +127,140 @@ byte estado_debug = 0;
 
 int comunication_control_count = 0;
 
+//*************************************************************************************
+//********* XXX  INITIALIZATION AND SETUP DE LOS PINOS Y CONTROLADOR XXX  *************
+//*************************************************************************************
+void setup() {
+  #if USE_CURRENT_SENSOR
+    adc.begin();
+  #endif
+  initializeMotor(FRONT);
+  initializeMotor(BACK);
+
+  pinMode(pin_RST_RS485, OUTPUT);
+  // desactiva el modo transmision en el conversor RS485
+  digitalWrite(pin_RST_RS485, LOW);
+
+  pinMode(EVENT_CONTROL_DEBUG_PIN, OUTPUT);
+  digitalWrite(EVENT_CONTROL_DEBUG_PIN, LOW);
+
+  #if (DEBUG_MODE) 
+    SerialUSB.begin(115200);
+  #endif
+  //Serial1.begin(1312500);
+  Serial3.begin(256000);
+  //Serial3.begin(115200);
+  pinMode(30, OUTPUT);
+  // Ventana de tiempo 10 mS
+  Timer0.start(10000);
+  // Interrupcion timer 1
+  Timer0.attachInterrupt(funcion_t1);
+}//----------------   FIM DO SETUP Y PARAMETROS -----------------------------
+
+double raw_data = 0;
+//*************************************************************************************
+//***************************** XXX  MAIN  XXX  ***************************************
+//*************************************************************************************
+void loop() {
+  // Cada 10 ms ejecuta este codigo - Lazo de control
+  if (evento_control == 1) {
+    if (comunication_control_count >= 10) {
+      modo = 0;
+    }
+    
+    updateSetPoint(FRONT, actuador[3]);
+    updateSetPoint(BACK, actuador[4]);
+    
+    
+    raw_data = updateMotorSpeed(FRONT);
+    input_PID[FRONT] =  averageFilter(FRONT, raw_data, 8);
+//    input_PID[FRONT] = updateMotorSpeed(FRONT);
+    sensor[0] = input_PID[FRONT];
+    estimateRotationDirection(FRONT, output_motor_direction[FRONT]);
+
+    
+    raw_data = updateMotorSpeed(BACK);
+    input_PID[BACK] =  averageFilter(BACK, raw_data, 8);
+//    input_PID[BACK] = updateMotorSpeed(BACK);
+    sensor[1] = input_PID[BACK];
+    estimateRotationDirection(BACK, output_motor_direction[BACK]);
+
+    #if USE_CURRENT_SENSOR
+      int current_sensor[3];
+      readCurrentSensor(FRONT, current_sensor);
+      sensor[4] = current_sensor[0];
+      sensor[5] = current_sensor[1];
+      sensor[6] = current_sensor[2];
+
+      readCurrentSensor(BACK, current_sensor);
+      sensor[7] = current_sensor[0];
+      sensor[8] = current_sensor[1];
+      sensor[9] = current_sensor[2];
+    #endif
+    // MODO = 0 --> STOP
+    if (modo == 0) {
+      // Incluir Aqui codigo de parada
+      pwm_motor_front.set_duty(PWM_PERIODO_US_MIN);
+      pwm_motor_back.set_duty(PWM_PERIODO_US_MIN);
+      stopMotor(FRONT);
+      stopMotor(BACK);
+      PID_motor[FRONT].SetTunings(actuador[0], actuador[1], actuador[2]);
+      PID_motor[BACK].SetTunings(actuador[0], actuador[1], actuador[2]);
+
+    } else if (modo == 1) {
+
+      if (first_time == true) {
+        initializeBrushlessDriver(FRONT);
+        initializeBrushlessDriver(BACK);
+        first_time = false;
+      }
+      
+      digitalWrite(EVENT_CONTROL_DEBUG_PIN, HIGH);
+
+      sensor[2] = setMotorSpeedAndDirection(FRONT);
+      sensor[3] = setMotorSpeedAndDirection(BACK);
+
+      digitalWrite(EVENT_CONTROL_DEBUG_PIN, LOW);
+    } 
+    evento_control = 0;
+  }
+  // Cada xxx ms ejecuta este codigo
+  if (evento_tarea_1 == 1) {      
+    evento_tarea_1  = 0;
+  }
+  //*************************************************************************************
+  //*************** EVENTO DETECCION DE TRAMA   *************************************
+  //*************************************************************************************
+  if (evento_rx == 1) {
+    detectionSerialData();
+    // Reset de bandera RX trama
+    evento_rx = 0;
+    // Activa bandera de TX
+    evento_tx = 1;
+  }
+  //actuador
+
+  //*************************************************************************************
+  //*************** XXX  TRANSMIION DE DATOS  XXX  *************************************
+  //*************************************************************************************
+  if (evento_tx == 1) {
+    // Activa modo transmisor en el conversor RS485
+    digitalWrite(pin_RST_RS485, HIGH);
+    if(estado_debug == 1) {
+      digitalWrite(30, HIGH);
+      estado_debug = 0;
+    } else {
+      digitalWrite(30, LOW);
+      estado_debug = 1;
+    }
+    comunication_control_count = 0;
+    sendSerialData();
+    // desactiva el modo transmision en el conversor RS485
+    digitalWrite(pin_RST_RS485, LOW);
+  }
+}//----------------   FIM MAIN ---------------------------------
+
+
 double doubleMap(double x, double in_min, double in_max, double out_min, double out_max) {
   double temp = (x - in_min)*(out_max - out_min)/(in_max - in_min) + out_min;
   return temp;
@@ -122,6 +268,7 @@ double doubleMap(double x, double in_min, double in_max, double out_min, double 
 
 void stopMotor(int motor) {
     digitalWrite(el_pin_motor[motor], LOW);
+   // delay(1);
     digitalWrite(PIN_BRAKE[motor], HIGH);
 //    if (motor == FRONT) {
 //      pwm_motor_brake_front.set_duty(0);
@@ -137,10 +284,24 @@ void runMotor(int motor) {
 //    pwm_motor_brake_back.set_duty(PWM_PERIODO_US);
 //  }
   digitalWrite(PIN_BRAKE[motor], LOW);
+ // delay(1);
   digitalWrite(el_pin_motor[motor], HIGH);
 }
-
-
+double average_array[2][50];
+double averageFilter(uint motor, double new_value, int order) {
+  double suma = 0;
+  suma += new_value;
+  if (order <= 0) {
+    return suma;
+  } else {
+    for(int i =0; i < (order-1); i++) {
+        average_array[motor][i] =average_array[motor][i +1];
+        suma += average_array[motor][i];
+    }
+    average_array[motor][order-1]=new_value;
+    return suma / order;
+  }
+}
 bool estimateRotationDirection(const uint motor, const int output_motor_direction){
   int motor_state = 0;
   if (fabs(input_PID[motor]) < 0.01) {
@@ -235,40 +396,11 @@ void initializeBrushlessDriver(int motor) {
 
   // Init brushless driver
   digitalWrite(PIN_POWER_ENABLE[motor], LOW);
-  delay(2);
+  delay(5);
   stopMotor(motor);
   
 
 }
-//*************************************************************************************
-//********* XXX  INITIALIZATION AND SETUP DE LOS PINOS Y CONTROLADOR XXX  *************
-//*************************************************************************************
-void setup() {
-  #if USE_CURRENT_SENSOR
-    adc.begin();
-  #endif
-  initializeMotor(FRONT);
-  initializeMotor(BACK);
-
-  pinMode(pin_RST_RS485, OUTPUT);
-  // desactiva el modo transmision en el conversor RS485
-  digitalWrite(pin_RST_RS485, LOW);
-
-  pinMode(EVENT_CONTROL_DEBUG_PIN, OUTPUT);
-  digitalWrite(EVENT_CONTROL_DEBUG_PIN, LOW);
-
-  #if (DEBUG_MODE) 
-    SerialUSB.begin(115200);
-  #endif
-  //Serial1.begin(1312500);
-  Serial3.begin(256000);
-  //Serial3.begin(115200);
-  pinMode(30, OUTPUT);
-  // Ventana de tiempo 10 mS
-  Timer0.start(10000);
-  // Interrupcion timer 1
-  Timer0.attachInterrupt(funcion_t1);
-}//----------------   FIM DO SETUP Y PARAMETROS -----------------------------
 
 void updateSetPoint(const int motor, const float set_point_value) {
     double signal_set_point;
@@ -348,7 +480,7 @@ double setMotorSpeedAndDirection(const int motor) {
     // PID calculation and command
     PID_motor[motor].Compute();
     
-    salida_motor = output_PID[motor] ;
+    salida_motor = output_PID[motor];
 
   #else 
     salida_motor = set_point_PID[motor];
@@ -384,101 +516,6 @@ double setMotorSpeedAndDirection(const int motor) {
     #endif
   }
 #endif
-
-//*************************************************************************************
-//***************************** XXX  MAIN  XXX  ***************************************
-//*************************************************************************************
-void loop() {
-  // Cada 10 ms ejecuta este codigo - Lazo de control
-  if (evento_control == 1) {
-    if (comunication_control_count >= 10) {
-      modo = 0;
-    }
-    
-    updateSetPoint(FRONT, actuador[3]);
-    updateSetPoint(BACK, actuador[4]);
-
-    estimateRotationDirection(FRONT, output_motor_direction[FRONT]);
-    input_PID[FRONT] = updateMotorSpeed(FRONT);
-    sensor[0] = input_PID[FRONT];
-
-    estimateRotationDirection(BACK, output_motor_direction[BACK]);
-    input_PID[BACK] = updateMotorSpeed(BACK);
-    sensor[1] = input_PID[BACK];
-
-    #if USE_CURRENT_SENSOR
-      int current_sensor[3];
-      readCurrentSensor(FRONT, current_sensor);
-      sensor[4] = current_sensor[0];
-      sensor[5] = current_sensor[1];
-      sensor[6] = current_sensor[2];
-
-      readCurrentSensor(BACK, current_sensor);
-      sensor[7] = current_sensor[0];
-      sensor[8] = current_sensor[1];
-      sensor[9] = current_sensor[2];
-    #endif
-    // MODO = 0 --> STOP
-    if (modo == 0) {
-      // Incluir Aqui codigo de parada
-      pwm_motor_front.set_duty(PWM_PERIODO_US_MIN);
-      pwm_motor_back.set_duty(PWM_PERIODO_US_MIN);
-      stopMotor(FRONT);
-      stopMotor(BACK);
-      PID_motor[FRONT].SetTunings(actuador[0], actuador[1], actuador[2]);
-      PID_motor[BACK].SetTunings(actuador[0], actuador[1], actuador[2]);
-
-    } else if (modo == 1) {
-
-      if (first_time == true) {
-        initializeBrushlessDriver(FRONT);
-        initializeBrushlessDriver(BACK);
-        first_time = false;
-      }
-      
-      digitalWrite(EVENT_CONTROL_DEBUG_PIN, HIGH);
-
-      sensor[2] = setMotorSpeedAndDirection(FRONT);
-      sensor[3] = setMotorSpeedAndDirection(BACK);
-
-      digitalWrite(EVENT_CONTROL_DEBUG_PIN, LOW);
-    } 
-    evento_control = 0;
-  }
-  // Cada xxx ms ejecuta este codigo
-  if (evento_tarea_1 == 1) {      
-    evento_tarea_1  = 0;
-  }
-  //*************************************************************************************
-  //*************** EVENTO DETECCION DE TRAMA   *************************************
-  //*************************************************************************************
-  if (evento_rx == 1) {
-    detectionSerialData();
-    // Reset de bandera RX trama
-    evento_rx = 0;
-    // Activa bandera de TX
-    evento_tx = 1;
-  }
-
-  //*************************************************************************************
-  //*************** XXX  TRANSMIION DE DATOS  XXX  *************************************
-  //*************************************************************************************
-  if (evento_tx == 1) {
-    // Activa modo transmisor en el conversor RS485
-    digitalWrite(pin_RST_RS485, HIGH);
-    if(estado_debug == 1) {
-      digitalWrite(30, HIGH);
-      estado_debug = 0;
-    } else {
-      digitalWrite(30, LOW);
-      estado_debug = 1;
-    }
-    comunication_control_count = 0;
-    sendSerialData();
-    // desactiva el modo transmision en el conversor RS485
-    digitalWrite(pin_RST_RS485, LOW);
-  }
-}//----------------   FIM MAIN ---------------------------------
 
 void detectionSerialData() {
   // Recibe modo
