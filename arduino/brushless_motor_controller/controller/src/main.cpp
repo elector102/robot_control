@@ -3,10 +3,9 @@
 #include "pwm_lib.h"
 #include "tc_lib.h"
 #include <PID_v1.h>
-#include <pinout.h>
+#include <pinout&defines.h>
 #include <MCP3208.h>
 #include <SPI.h>
-
 
 void funcion_t1();
 void detectionSerialData();
@@ -23,67 +22,23 @@ void runMotor(int motor);
 void stopMotor(int motor);
 double doubleMap(double x, double in_min, double in_max, double out_min, double out_max);
 
-#define RIGHT 0
-#define LEFT 1
-#define BOARD_SIDE LEFT
-
-#define FRONT 0
-#define BACK 1
-
-#if (BOARD_SIDE)
-  #define forward_direction HIGH
-  #define backward_direction LOW
-  byte IDslave = 1;
-#else
-  #define forward_direction LOW
-  #define backward_direction HIGH
-  byte IDslave = 2;
-#endif
-
-#define STOP_STATE 0
-#define FORWARD_ROTATION_STATE 1
-#define BACKWARD_ROTATION_STATE -1
-#define ROTATION_STATE 2
-
 int current_motor_direction[2] = { STOP_STATE, STOP_STATE};
 int output_motor_direction[2] = { STOP_STATE, STOP_STATE};
-
-int last_motor_input_update_rate[2] = {0, 0};
-int last_motor_input[2] = {0, 0};
-
-#define CORRECT_ROTATION 0
-#define BRAKE_ROTATION 1
-#define CONFIRM_ROTATION_CHANGE 2
-int state_of_rotation[2] = { STOP_STATE, STOP_STATE};
-
-#define PWM_PERIODO_US 10000 //10khz
-#define PWM_PERIODO_US_MIN 0
-#define DEBUG_MODE false
-#define USE_PID_MODE true
-#define USE_CURRENT_SENSOR false
 
 #if USE_CURRENT_SENSOR
   MCP3208 adc(PIN_SPI_CS2);
 #endif
 
 bool first_time = true;
-// Diametro de la rueda en cm. cm = 2.54 * pulgadas
-#define DIAMETRO_CM 24.13 // 9.5 pulgadas
-// cantidad de periodos que se tienen por vuelta del motor
-#define PULSOS_POR_VUELTAS 45.0
+
 // perimetro en cm de la rueda
-float perimetro_rueda = PI * DIAMETRO_CM;
+const float perimetro_rueda = PI * DIAMETRO_CM;
 // distancia recorrida por cada periodo de señal del motor
-float distancia_periodo = perimetro_rueda / PULSOS_POR_VUELTAS; // 1.8cm
-float us_to_s = 1000000;
-float cm_to_m = 1;
-float cm_por_periodo = distancia_periodo;
+const float distancia_periodo = perimetro_rueda / PULSOS_POR_VUELTAS; // 1.8cm
+const float us_to_s = 1000000;
+const float cm_to_m = 1;
+const float cm_por_periodo = distancia_periodo;
 
-#define MAX_VEL_CM_S 1000.0
-
-#define CAPTURE_TIME_WINDOW 400000 // usecs
-
-double last_set_point_PID[2] = {0, 0};
 double set_point_PID[2] = {0, 0};
 double output_PID[2] = {0, 0};
 double input_PID[2] = {0, 0};
@@ -93,16 +48,11 @@ double input_PID[2] = {0, 0};
         PID(&input_PID[FRONT], &output_PID[FRONT], &set_point_PID[FRONT], 1, 0, 0, DIRECT),
         PID(&input_PID[BACK], &output_PID[BACK], &set_point_PID[BACK], 1, 0, 0, DIRECT)
       };
-  
 #endif
 
 byte cantidad_sensores;
 byte cantidad_actuadores;
 
-// BUFFERS
-unsigned int envio[100];
-// Buffer temporal de lectura. No usar
-byte inData[50];
 // Buffer final de lectura.Datos crudos.
 byte inData1[50];
 // Buffer final de datos de actuadores. Datos en formato 15 bit.
@@ -114,12 +64,8 @@ float Ksensor = 1000.0;
 // Mapeo
 float Kactuador = 0.001; 
 
-int contador = 0;
-int encabezado = 0, i = 0, j = 0, k = 0;
-
 // Banderas de eventos-tareas
 bool evento_tx = 0, evento_control = 0, evento_rx = 0, evento_tarea_1 = 0;
-
 
 // Modo-funcion
 byte modo = 0;
@@ -157,7 +103,6 @@ void setup() {
   Timer0.attachInterrupt(funcion_t1);
 }//----------------   FIM DO SETUP Y PARAMETROS -----------------------------
 
-double raw_data = 0;
 //*************************************************************************************
 //***************************** XXX  MAIN  XXX  ***************************************
 //*************************************************************************************
@@ -171,17 +116,15 @@ void loop() {
     updateSetPoint(FRONT, actuador[3]);
     updateSetPoint(BACK, actuador[4]);
     
-    
-    raw_data = updateMotorSpeed(FRONT);
+    double raw_data = updateMotorSpeed(FRONT);
     input_PID[FRONT] =  averageFilter(FRONT, raw_data, 8);
-//    input_PID[FRONT] = updateMotorSpeed(FRONT);
+    //input_PID[FRONT] = updateMotorSpeed(FRONT);
     sensor[0] = input_PID[FRONT];
     estimateRotationDirection(FRONT, output_motor_direction[FRONT]);
 
-    
     raw_data = updateMotorSpeed(BACK);
     input_PID[BACK] =  averageFilter(BACK, raw_data, 8);
-//    input_PID[BACK] = updateMotorSpeed(BACK);
+    //input_PID[BACK] = updateMotorSpeed(BACK);
     sensor[1] = input_PID[BACK];
     estimateRotationDirection(BACK, output_motor_direction[BACK]);
 
@@ -197,31 +140,28 @@ void loop() {
       sensor[8] = current_sensor[1];
       sensor[9] = current_sensor[2];
     #endif
-    // MODO = 0 --> STOP
-    if (modo == 0) {
-      // Incluir Aqui codigo de parada
-      pwm_motor_front.set_duty(PWM_PERIODO_US_MIN);
-      pwm_motor_back.set_duty(PWM_PERIODO_US_MIN);
-      stopMotor(FRONT);
-      stopMotor(BACK);
-      PID_motor[FRONT].SetTunings(actuador[0], actuador[1], actuador[2]);
-      PID_motor[BACK].SetTunings(actuador[0], actuador[1], actuador[2]);
 
-    } else if (modo == 1) {
-
+    if (modo == 1) {
       if (first_time == true) {
         initializeBrushlessDriver(FRONT);
         initializeBrushlessDriver(BACK);
         first_time = false;
       }
-      
       digitalWrite(EVENT_CONTROL_DEBUG_PIN, HIGH);
 
       sensor[2] = setMotorSpeedAndDirection(FRONT);
       sensor[3] = setMotorSpeedAndDirection(BACK);
 
       digitalWrite(EVENT_CONTROL_DEBUG_PIN, LOW);
-    } 
+    } else {
+
+      pwm_motor_front.set_duty(PWM_PERIODO_US_MIN);
+      pwm_motor_back.set_duty(PWM_PERIODO_US_MIN);
+      stopMotor(FRONT);
+      stopMotor(BACK);
+      PID_motor[FRONT].SetTunings(actuador[0], actuador[1], actuador[2]);
+      PID_motor[BACK].SetTunings(actuador[0], actuador[1], actuador[2]);
+    }
     evento_control = 0;
   }
   // Cada xxx ms ejecuta este codigo
@@ -260,7 +200,6 @@ void loop() {
   }
 }//----------------   FIM MAIN ---------------------------------
 
-
 double doubleMap(double x, double in_min, double in_max, double out_min, double out_max) {
   double temp = (x - in_min)*(out_max - out_min)/(in_max - in_min) + out_min;
   return temp;
@@ -287,8 +226,9 @@ void runMotor(int motor) {
  // delay(1);
   digitalWrite(el_pin_motor[motor], HIGH);
 }
-double average_array[2][50];
+
 double averageFilter(uint motor, double new_value, int order) {
+  static double average_array[2][50];
   double suma = 0;
   suma += new_value;
   if (order <= 0) {
@@ -304,7 +244,8 @@ double averageFilter(uint motor, double new_value, int order) {
 }
 bool estimateRotationDirection(const uint motor, const int output_motor_direction){
   int motor_state = 0;
-  if (fabs(input_PID[motor]) < 0.01) {
+  static int state_of_rotation[2] = { STOP_STATE, STOP_STATE};
+  if (fabs(input_PID[motor]) < 0.001) {
     motor_state = STOP_STATE;
   } else {
     motor_state = ROTATION_STATE;
@@ -337,12 +278,15 @@ bool estimateRotationDirection(const uint motor, const int output_motor_directio
       state_of_rotation[motor] = CORRECT_ROTATION;
       break;
   }
+  /*
+  static int last_motor_input_update_rate[2] = {0, 0};
+  static int last_motor_input[2] = {0, 0};
   if (last_motor_input_update_rate[motor] >= 10) {
     last_motor_input[motor] = fabs(input_PID[motor]);
     last_motor_input_update_rate[motor] = 0;
   } else {
     last_motor_input_update_rate[motor]++;
-  }
+  }*/
 }
 #if USE_CURRENT_SENSOR
   bool estimateRotationDirectionWithCurrentSensor(const uint motor, const int output_motor_direction) {
@@ -404,6 +348,7 @@ void initializeBrushlessDriver(int motor) {
 
 void updateSetPoint(const int motor, const float set_point_value) {
     double signal_set_point;
+    static double last_set_point_PID[2] = {0, 0};
     signal_set_point = (double)set_point_value / (double)Kactuador;
       
     if (last_set_point_PID[motor] != signal_set_point) {
@@ -434,7 +379,7 @@ double updateMotorSpeed(const int motor) {
     period_motor_us = period_motor / capture_motor_back.ticks_per_usec();
   }
 
-  input_PID_inter = (distancia_periodo * us_to_s)/ period_motor_us;
+  input_PID_inter = (distancia_periodo * us_to_s) / period_motor_us;
 
   if isinf(input_PID_inter) {
     input_PID_inter = 0.0;
@@ -444,6 +389,9 @@ double updateMotorSpeed(const int motor) {
     } else {
       input_PID_inter = input_PID_inter * current_motor_direction[motor];
     }
+  }
+  if (fabs(input_PID_inter) < 0.01) {
+    input_PID_inter = 0;
   }
   input_PID_inter = input_PID_inter > MAX_VEL_CM_S ? MAX_VEL_CM_S : input_PID_inter;
   input_PID_inter = input_PID_inter < -MAX_VEL_CM_S ? -MAX_VEL_CM_S : input_PID_inter;
@@ -468,7 +416,7 @@ int setMotorDirection(const int motor, const double velocity) {
     output_motor_direction = BACKWARD_ROTATION_STATE;
   } else {
     output_motor_direction = STOP_STATE;
-    stopMotor(motor);
+    //stopMotor(motor);
   }
   return output_motor_direction;
 }
@@ -479,12 +427,13 @@ double setMotorSpeedAndDirection(const int motor) {
   #if (USE_PID_MODE) 
     // PID calculation and command
     PID_motor[motor].Compute();
-    
     salida_motor = output_PID[motor];
 
   #else 
     salida_motor = set_point_PID[motor];
   #endif
+  if (fabs(salida_motor) < 0.01)
+    salida_motor = 0;
 
   output_motor_direction[motor] = setMotorDirection(motor, salida_motor);
 
@@ -524,7 +473,7 @@ void detectionSerialData() {
   cantidad_actuadores = inData1[1];
   // Recibe cantidad de sensores
   cantidad_sensores = inData1[2];
-  for (k = 0; k < cantidad_actuadores; k++) {
+  for (int k = 0; k < cantidad_actuadores; k++) {
     // Arma dato de 15 bits de magnitud
     actuador[k] = ((float)256.00 * (0x7F & inData1[2 * k + 4]) + inData1[2 * k + 3]); 
     // Signo en bit 16
@@ -536,38 +485,41 @@ void detectionSerialData() {
 }
 
 void sendSerialData(){
-// DEBUG
-    //sensor[0] = sensor[0] + 1.0;
-    // Envia cabecera FF FF
-    Serial3.write(0xFF);    
-    // Envia cabecera FF FF
-    Serial3.write(0xFF);    
-    // Envia modo
-    Serial3.write(IDslave);
-    // Envia modo   
-    Serial3.write(modo);   
-  
-    for (k = 0; k < cantidad_sensores; k++) {
-      if (sensor[k] < 0) {
-        envio[k] =  ((unsigned int)(-sensor[k] * Ksensor)) & 0x7FFF;
-        envio[k] = envio[k] | 0x8000;
-      } else {
-        envio[k] =  ((unsigned int)(sensor[k] * Ksensor)) & 0x7FFF;
-      }
-      Serial3.write(highByte(envio[k]));
-      Serial3.write(lowByte(envio[k]));
+  // BUFFERS
+  static unsigned int envio[100];
+  // Envia cabecera FF FF
+  Serial3.write(0xFF);    
+  // Envia cabecera FF FF
+  Serial3.write(0xFF);    
+  // Envia modo
+  Serial3.write(IDslave);
+  // Envia modo   
+  Serial3.write(modo);   
+
+  for (int k = 0; k < cantidad_sensores; k++) {
+    if (sensor[k] < 0) {
+      envio[k] =  ((unsigned int)(-sensor[k] * Ksensor)) & 0x7FFF;
+      envio[k] = envio[k] | 0x8000;
+    } else {
+      envio[k] =  ((unsigned int)(sensor[k] * Ksensor)) & 0x7FFF;
     }
-    // Fin trama
-    Serial3.write((byte)0);       
-    evento_tx = 0;
-    
-    Serial3.flush();
+    Serial3.write(highByte(envio[k]));
+    Serial3.write(lowByte(envio[k]));
+  }
+  // Fin trama
+  Serial3.write((byte)0);       
+  evento_tx = 0;
+  
+  Serial3.flush();
 }
 
 //*************************************************************************************
 //********** SERVICIO DE INTERRUPCION  ISR(SERIAL_RX)   *********************
 //*************************************************************************************
 void serialEvent3() {
+  // Buffer temporal de lectura. No usar
+  static byte inData[50];
+  static int encabezado = 0, i = 0;
   // Lee un byte
   inData[i] = Serial3.read();
   // Separacion de datos recibidos
@@ -596,7 +548,7 @@ void serialEvent3() {
     } else {
       if (i >= (4 + 2 * cantidad_actuadores)) {
         if (inData[3 + 2 * cantidad_actuadores] == 0) {
-          for (k = 0; k < (2 * cantidad_actuadores + 3); k++)
+          for (int k = 0; k < (2 * cantidad_actuadores + 3); k++)
             inData1[k] = inData[k];
           // Indico nuevo dato
           evento_rx = 1;   
@@ -614,6 +566,7 @@ void serialEvent3() {
 //*************************************************************************************
 void funcion_t1() {
   evento_control = 1;
+  static int contador = 0;
   contador++;
   comunication_control_count++;
   if (contador >= 100) {

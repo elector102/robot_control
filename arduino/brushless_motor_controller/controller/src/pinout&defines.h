@@ -1,11 +1,13 @@
+#include <configuration.h>
+
 #define EVENT_CONTROL_DEBUG_PIN 33
 
 // Sentido de giro del motor
-int z_f_pin_motor[2] ={9, 4};
+const int z_f_pin_motor[2] ={9, 4};
 // Pulsos de velocidad de salida
 //#define signal_pin_motor_front 10
 // Enable control
-int el_pin_motor[2] = {12, 7};
+const int el_pin_motor[2] = {12, 7};
 
 // Definiciones motor front(Delantero)
 // Defining pwm object using pin 6, pin PC24 mapped to pin 6 on the DUE
@@ -29,10 +31,40 @@ arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML3_PB19> pwm_motor_b
 // analog pin 9
 arduino_due::pwm_lib::pwm<arduino_due::pwm_lib::pwm_pin::PWML2_PB18> pwm_motor_brake_back;
 
-int pin_RST_RS485 = 10;
+const int pin_RST_RS485 = 10;
 
-int PIN_SPI_CS2 = 52;
+const int PIN_SPI_CS2 = 52;
 
-int PIN_POWER_ENABLE[2] = {39, 51};
+const int PIN_POWER_ENABLE[2] = {39, 51};
 
-int PIN_BRAKE[2] = {41, 53};
+const int PIN_BRAKE[2] = {41, 53};
+
+
+/// Defines
+
+#define RIGHT 0
+#define LEFT 1
+
+#define FRONT 0
+#define BACK 1
+
+#if (BOARD_SIDE)
+  #define forward_direction HIGH
+  #define backward_direction LOW
+  const byte IDslave = 1;
+#else
+  #define forward_direction LOW
+  #define backward_direction HIGH
+  const byte IDslave = 2;
+#endif
+
+#define STOP_STATE 0
+#define FORWARD_ROTATION_STATE 1
+#define BACKWARD_ROTATION_STATE -1
+#define ROTATION_STATE 2
+
+#define CORRECT_ROTATION 0
+#define BRAKE_ROTATION 1
+#define CONFIRM_ROTATION_CHANGE 2
+
+#define CAPTURE_TIME_WINDOW 400000 // usecs
