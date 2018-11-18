@@ -5,7 +5,7 @@
 #define PWM_PERIODO_US_MIN 0
 #define DEBUG_MODE false
 #define USE_PID_MODE true
-#define USE_CURRENT_SENSOR false
+#define USE_CURRENT_SENSOR true
 // Diametro de la rueda en cm. cm = 2.54 * pulgadas
 #define DIAMETRO_CM 24.13 // 9.5 pulgadas
 // cantidad de periodos que se tienen por vuelta del motor

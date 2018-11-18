@@ -21,6 +21,10 @@ double averageFilter(uint motor, double new_value, int order);
 void runMotor(int motor);
 void stopMotor(int motor);
 double doubleMap(double x, double in_min, double in_max, double out_min, double out_max);
+#if USE_CURRENT_SENSOR
+  void readCurrentSensor (int motor, int *current_sensor);
+#endif
+
 
 int current_motor_direction[2] = { STOP_STATE, STOP_STATE};
 int output_motor_direction[2] = { STOP_STATE, STOP_STATE};
@@ -80,6 +84,8 @@ void setup() {
   #if USE_CURRENT_SENSOR
     adc.begin();
   #endif
+    // initialize SPI:
+  SPI.begin(); 
   initializeMotor(FRONT);
   initializeMotor(BACK);
 
@@ -153,7 +159,7 @@ void loop() {
       sensor[3] = setMotorSpeedAndDirection(BACK);
 
       digitalWrite(EVENT_CONTROL_DEBUG_PIN, LOW);
-    } else {
+    } else { // MODO = 0
 
       pwm_motor_front.set_duty(PWM_PERIODO_US_MIN);
       pwm_motor_back.set_duty(PWM_PERIODO_US_MIN);
