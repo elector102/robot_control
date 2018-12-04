@@ -129,6 +129,11 @@ void PID::SetTunings(double Kp, double Ki, double Kd, int POn)
 void PID::SetTunings(double Kp, double Ki, double Kd){
     SetTunings(Kp, Ki, Kd, pOn); 
 }
+void PID::Reset() {
+    lastTime = millis();
+    lastInput = 0;
+    outputSum =0;
+}
 
 /* SetSampleTime(...) *********************************************************
  * sets the period, in Milliseconds, at which the calculation is performed

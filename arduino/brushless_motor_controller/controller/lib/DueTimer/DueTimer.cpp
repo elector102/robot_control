@@ -279,10 +279,10 @@ void TC0_Handler(void){
 	DueTimer::callbacks[0]();
 }
 #endif
-/*void TC1_Handler(void){
+void TC1_Handler(void){
 	TC_GetStatus(TC0, 1);
 	DueTimer::callbacks[1]();
-}*/
+}
 // Fix for compatibility with Servo library
 #ifndef USING_SERVO_LIB
 void TC2_Handler(void){

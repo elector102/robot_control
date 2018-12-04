@@ -1,4 +1,3 @@
-
 #define BOARD_SIDE LEFT
 
 #define PWM_PERIODO_US 10000 //10khz
@@ -12,3 +11,9 @@
 #define PULSOS_POR_VUELTAS 45.0
 
 #define MAX_VEL_CM_S 1000.0
+
+#define USE_BRAKE true
+
+#define PID_LIMIT 0.6
+
+#define MAP_LIMIT 1.0

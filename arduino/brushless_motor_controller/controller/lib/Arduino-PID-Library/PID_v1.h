@@ -52,7 +52,8 @@ class PID
                                           //   the PID calculation is performed.  default is 100
 										  
 	double GetSetPoint();
-										  
+	
+  void Reset();
 										  
 										  
   //Display functions ****************************************************************

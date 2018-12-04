@@ -22,7 +22,7 @@ void runMotor(int motor);
 void stopMotor(int motor);
 double doubleMap(double x, double in_min, double in_max, double out_min, double out_max);
 #if USE_CURRENT_SENSOR
-  void readCurrentSensor (int motor, int *current_sensor);
+  int readCurrentSensor (int motor, double *current_sensor);
 #endif
 
 
@@ -49,8 +49,8 @@ double input_PID[2] = {0, 0};
 
 #if (USE_PID_MODE)
   PID PID_motor[2] = {
-        PID(&input_PID[FRONT], &output_PID[FRONT], &set_point_PID[FRONT], 1, 0, 0, DIRECT),
-        PID(&input_PID[BACK], &output_PID[BACK], &set_point_PID[BACK], 1, 0, 0, DIRECT)
+        PID(&input_PID[FRONT], &output_PID[FRONT], &set_point_PID[FRONT], 2, 4, 0, DIRECT),
+        PID(&input_PID[BACK], &output_PID[BACK], &set_point_PID[BACK], 2, 4, 0, DIRECT)
       };
 #endif
 
@@ -103,6 +103,7 @@ void setup() {
   Serial3.begin(256000);
   //Serial3.begin(115200);
   pinMode(30, OUTPUT);
+  pinMode(time_measure, OUTPUT);
   // Ventana de tiempo 10 mS
   Timer0.start(10000);
   // Interrupcion timer 1
@@ -135,16 +136,19 @@ void loop() {
     estimateRotationDirection(BACK, output_motor_direction[BACK]);
 
     #if USE_CURRENT_SENSOR
-      int current_sensor[3];
-      readCurrentSensor(FRONT, current_sensor);
+      double current_sensor[3];
+      static int sentidoT[2];
+      int sentido;
+      sentido = readCurrentSensor(FRONT, current_sensor);
       sensor[4] = current_sensor[0];
       sensor[5] = current_sensor[1];
       sensor[6] = current_sensor[2];
 
-      readCurrentSensor(BACK, current_sensor);
+      sentido = readCurrentSensor(BACK, current_sensor);
       sensor[7] = current_sensor[0];
       sensor[8] = current_sensor[1];
       sensor[9] = current_sensor[2];
+
     #endif
 
     if (modo == 1) {
@@ -159,7 +163,13 @@ void loop() {
       sensor[3] = setMotorSpeedAndDirection(BACK);
 
       digitalWrite(EVENT_CONTROL_DEBUG_PIN, LOW);
-    } else { // MODO = 0
+    } else if (modo == 2) {
+      // reset board.
+    } 
+    else { // MODO = 0
+      // PID calculation and command
+      PID_motor[FRONT].Reset();
+      PID_motor[BACK].Reset();
 
       pwm_motor_front.set_duty(PWM_PERIODO_US_MIN);
       pwm_motor_back.set_duty(PWM_PERIODO_US_MIN);
@@ -251,7 +261,7 @@ double averageFilter(uint motor, double new_value, int order) {
 bool estimateRotationDirection(const uint motor, const int output_motor_direction){
   int motor_state = 0;
   static int state_of_rotation[2] = { STOP_STATE, STOP_STATE};
-  if (fabs(input_PID[motor]) < 0.001) {
+  if (fabs(input_PID[motor]) < ZERO_THRESHOLD) {
     motor_state = STOP_STATE;
   } else {
     motor_state = ROTATION_STATE;
@@ -264,10 +274,17 @@ bool estimateRotationDirection(const uint motor, const int output_motor_directio
       }
       break;
     case BRAKE_ROTATION:
-      stopMotor(motor);
+      #if USE_BRAKE
+        stopMotor(motor);
+      #endif
+
       if ( motor_state == STOP_STATE) {
         current_motor_direction[motor] = STOP_STATE;
         state_of_rotation[motor] = CONFIRM_ROTATION_CHANGE;
+      }
+      if ( current_motor_direction[motor] == output_motor_direction ) {
+        current_motor_direction[motor] = output_motor_direction;
+        state_of_rotation[motor] = CORRECT_ROTATION;
       }
       //if (last_motor_input[motor] < (fabs(input_PID[motor]) - 0.025 * MAX_VEL_CM_S) ) {
       //  state_of_rotation[motor] = CONFIRM_ROTATION_CHANGE;
@@ -313,16 +330,16 @@ void initializeMotor(int motor) {
     pwm_motor_front.set_duty(PWM_PERIODO_US_MIN);
 
     // brake
-    pwm_motor_brake_front.start(PWM_PERIODO_US, PWM_PERIODO_US);
-    pwm_motor_brake_front.set_duty(PWM_PERIODO_US);
+    //pwm_motor_brake_front.start(PWM_PERIODO_US, PWM_PERIODO_US);
+    //pwm_motor_brake_front.set_duty(PWM_PERIODO_US);
   } else {  
     // Initialization of capture objects
     capture_motor_back.config(CAPTURE_TIME_WINDOW);
     pwm_motor_back.start(PWM_PERIODO_US, 1000);
     pwm_motor_back.set_duty(PWM_PERIODO_US_MIN);
     // brake
-    pwm_motor_brake_back.start(PWM_PERIODO_US, PWM_PERIODO_US);
-    pwm_motor_brake_back.set_duty(PWM_PERIODO_US);
+    //pwm_motor_brake_back.start(PWM_PERIODO_US, PWM_PERIODO_US);
+    //pwm_motor_brake_back.set_duty(PWM_PERIODO_US);
   }
   pinMode(z_f_pin_motor[motor], OUTPUT);
   pinMode(el_pin_motor[motor], OUTPUT);
@@ -335,7 +352,7 @@ void initializeMotor(int motor) {
     //turn the PID on
     PID_motor[motor].SetMode(AUTOMATIC);
     PID_motor[motor].SetSampleTime(10);// in ms
-    PID_motor[motor].SetOutputLimits(-1.0, 1.0);
+    PID_motor[motor].SetOutputLimits(-PID_LIMIT, PID_LIMIT);
   #endif  
 }
 
@@ -345,8 +362,9 @@ void initializeBrushlessDriver(int motor) {
   digitalWrite(el_pin_motor[motor], HIGH);
 
   // Init brushless driver
+  delay(10);
   digitalWrite(PIN_POWER_ENABLE[motor], LOW);
-  delay(5);
+  delay(10);
   stopMotor(motor);
   
 
@@ -362,7 +380,7 @@ void updateSetPoint(const int motor, const float set_point_value) {
       signal_set_point = signal_set_point > MAX_VEL_CM_S ? MAX_VEL_CM_S : signal_set_point;
       signal_set_point = signal_set_point < -MAX_VEL_CM_S ? -MAX_VEL_CM_S : signal_set_point;
 
-      set_point_PID[motor] = doubleMap(signal_set_point, -MAX_VEL_CM_S, MAX_VEL_CM_S, -1.0, 1.0);
+      set_point_PID[motor] = doubleMap(signal_set_point, -MAX_VEL_CM_S, MAX_VEL_CM_S, -MAP_LIMIT, MAP_LIMIT);
 
       last_set_point_PID[motor] = signal_set_point; // cm/s
     }
@@ -393,16 +411,16 @@ double updateMotorSpeed(const int motor) {
     if (current_motor_direction[motor] == STOP_STATE) {
       input_PID_inter = input_PID_inter * output_motor_direction[motor];
     } else {
-      input_PID_inter = input_PID_inter * current_motor_direction[motor];
+      input_PID_inter = input_PID_inter * output_motor_direction[motor];
     }
   }
-  if (fabs(input_PID_inter) < 0.01) {
+  if (fabs(input_PID_inter) < ZERO_THRESHOLD) {
     input_PID_inter = 0;
   }
   input_PID_inter = input_PID_inter > MAX_VEL_CM_S ? MAX_VEL_CM_S : input_PID_inter;
   input_PID_inter = input_PID_inter < -MAX_VEL_CM_S ? -MAX_VEL_CM_S : input_PID_inter;
 
-  input_PID = doubleMap(input_PID_inter, -MAX_VEL_CM_S, MAX_VEL_CM_S, -1.0, 1.0);
+  input_PID = doubleMap(input_PID_inter, -MAX_VEL_CM_S, MAX_VEL_CM_S, -MAP_LIMIT, MAP_LIMIT);
 
   #if (DEBUG_MODE)
     SerialUSB.print("Sensado motor back en cm/s es: ");
@@ -414,10 +432,10 @@ double updateMotorSpeed(const int motor) {
 
 int setMotorDirection(const int motor, const double velocity) {
   int output_motor_direction;
-  if (velocity > 0.01) {
+  if (velocity > ZERO_THRESHOLD) {
     digitalWrite(z_f_pin_motor[motor], forward_direction);
     output_motor_direction = FORWARD_ROTATION_STATE; 
-  } else if (velocity < -0.01){ 
+  } else if (velocity < -ZERO_THRESHOLD){ 
     digitalWrite(z_f_pin_motor[motor], backward_direction);
     output_motor_direction = BACKWARD_ROTATION_STATE;
   } else {
@@ -438,12 +456,12 @@ double setMotorSpeedAndDirection(const int motor) {
   #else 
     salida_motor = set_point_PID[motor];
   #endif
-  if (fabs(salida_motor) < 0.01)
+  if (fabs(salida_motor) < ZERO_THRESHOLD)
     salida_motor = 0;
 
   output_motor_direction[motor] = setMotorDirection(motor, salida_motor);
 
-  salida_pwm_motor = doubleMap(fabs(salida_motor), 0.0, 1.0, PWM_PERIODO_US_MIN, PWM_PERIODO_US);
+  salida_pwm_motor = doubleMap(fabs(salida_motor), 0.0, MAP_LIMIT, PWM_PERIODO_US_MIN, PWM_PERIODO_US);
   if (motor == FRONT)
     pwm_motor_front.set_duty(salida_pwm_motor); 
   else
@@ -457,11 +475,20 @@ double setMotorSpeedAndDirection(const int motor) {
   return salida_motor;
 } 
 #if USE_CURRENT_SENSOR
-  void readCurrentSensor (int motor, int *current_sensor) {
+  int readCurrentSensor (int motor, double *current_sensor) {
+    static double motor_current[2][3];
+    static double last_motor_current[2][3];
+    static double pendiente[2][3];
+    static int last[2];
     int sensor_group = 2*(motor + 1 ) + motor;
     for (int i = 0; i < 3; i++) {
-      current_sensor[i] = adc.analogRead(sensor_group + i);
+      current_sensor[i] = (double(adc.analogRead(sensor_group + i)- 2048) * (5000.0 / 4096.0)) / 66.0;
+      last_motor_current[motor][i] = motor_current[motor][i];
+      motor_current[motor][i] = current_sensor[i];
+      pendiente[motor][i] = last_motor_current[motor][i] - motor_current[motor][i];
+      
     }
+
     #if DEBUG_MODE
       SerialUSB.print("current sensor value of motor ");
       SerialUSB.println(motor);
@@ -469,6 +496,12 @@ double setMotorSpeedAndDirection(const int motor) {
       SerialUSB.println(current_sensor[1]);
       SerialUSB.println(current_sensor[2]);
     #endif
+    if ((pendiente[motor][0] > 0.0) && (pendiente[motor][1] < 0.0) && current_sensor[2] < 0.0 ){
+      last[motor] = 1;
+    } else if ((pendiente[motor][0] < 0.0) && (pendiente[motor][1] > 0.0) && current_sensor[2] < 0.0 ){
+      last[motor] = -1;
+    } 
+    return last[motor];
   }
 #endif
 

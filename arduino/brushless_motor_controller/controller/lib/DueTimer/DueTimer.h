@@ -53,7 +53,7 @@ protected:
 
   // Make Interrupt handlers friends, so they can use callbacks
   friend void TC0_Handler(void);
-  //friend void TC1_Handler(void);
+  friend void TC1_Handler(void);
   friend void TC2_Handler(void);
   friend void TC3_Handler(void);
   friend void TC4_Handler(void);
