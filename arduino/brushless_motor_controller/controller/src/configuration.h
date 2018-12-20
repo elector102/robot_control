@@ -1,4 +1,4 @@
-#define BOARD_SIDE LEFT
+#define BOARD_SIDE RIGHT
 
 #define PWM_PERIODO_US 10000 //10khz
 #define PWM_PERIODO_US_MIN 0
@@ -14,6 +14,6 @@
 
 #define USE_BRAKE true
 
-#define PID_LIMIT 0.6
+#define PID_LIMIT 0.8
 
 #define MAP_LIMIT 1.0

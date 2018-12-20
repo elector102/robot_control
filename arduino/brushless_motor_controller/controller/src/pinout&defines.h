@@ -68,4 +68,4 @@ const byte IDslave = 2;
 #define CONFIRM_ROTATION_CHANGE 2
 
 #define CAPTURE_TIME_WINDOW 400000 // usecs
-#define ZERO_THRESHOLD 0.00001
+#define ZERO_THRESHOLD 0.000001
